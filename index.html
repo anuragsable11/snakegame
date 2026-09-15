@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#070b14" />
+  <meta name="description" content="Snake — a modern, neon take on the classic arcade game. Built with HTML5 Canvas and vanilla JavaScript." />
+  <title>Snake — Classic Arcade, Modern Neon</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ============================== Header ============================== -->
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M4 17h6a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8" />
+            <circle cx="18.6" cy="5" r="1.7" class="brand__eye" />
+          </svg>
+        </span>
+        <h1 class="brand__title">Snake</h1>
+      </div>
+      <p class="brand__tagline">Eat. Grow. Don&rsquo;t bite yourself.</p>
+    </header>
+
+    <!-- ============================== Layout ============================== -->
+    <main class="layout">
+
+      <!-- ------------------------- Game stage ------------------------- -->
+      <section class="stage" aria-label="Game board">
+
+        <div class="hud">
+          <div class="stat">
+            <span class="stat__label">Score</span>
+            <span class="stat__value" id="score">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">High Score</span>
+            <span class="stat__value stat__value--gold" id="high-score">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Speed</span>
+            <span class="stat__value" id="level">Lv 1</span>
+            <span class="meter" aria-hidden="true"><span class="meter__fill" id="speed-bar"></span></span>
+          </div>
+        </div>
+
+        <div class="board" id="board-wrap">
+          <canvas id="board" role="img"
+                  aria-label="Snake game board. Steer with the arrow keys or W A S D."></canvas>
+
+          <!-- Overlays: exactly one card is visible per game state -->
+          <div class="overlay">
+            <div class="overlay__card" id="panel-ready">
+              <p class="overlay__kicker">Ready</p>
+              <h2 class="overlay__title">Let&rsquo;s play</h2>
+              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the on-screen pad. Grab the glowing fruit to grow &mdash; the more you score, the faster it gets.</p>
+              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start Game</button>
+              <p class="overlay__hint">or press <kbd>Space</kbd></p>
+            </div>
+
+            <div class="overlay__card" id="panel-paused" hidden>
+              <p class="overlay__kicker">Paused</p>
+              <h2 class="overlay__title">Take a breath</h2>
+              <p class="overlay__text">Your run is waiting exactly where you left it.</p>
+              <div class="overlay__actions">
+                <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-resume">Resume</button>
+                <button type="button" class="btn btn--ghost btn--lg" id="btn-overlay-restart">Restart</button>
+              </div>
+              <p class="overlay__hint">or press <kbd>Space</kbd></p>
+            </div>
+
+            <div class="overlay__card" id="panel-gameover" hidden>
+              <p class="overlay__kicker overlay__kicker--danger" id="gameover-kicker">Game Over</p>
+              <h2 class="overlay__title" id="gameover-title">You crashed</h2>
+              <p class="overlay__text" id="gameover-reason">You hit the wall.</p>
+              <dl class="scoreboard">
+                <div class="scoreboard__row">
+                  <dt>Score</dt>
+                  <dd id="final-score">0</dd>
+                </div>
+                <div class="scoreboard__row">
+                  <dt>Best</dt>
+                  <dd id="final-high">0</dd>
+                </div>
+                <div class="scoreboard__row">
+                  <dt>Length</dt>
+                  <dd id="final-length">3</dd>
+                </div>
+              </dl>
+              <p class="badge-new" id="new-record" hidden>New High Score!</p>
+              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Play Again</button>
+              <p class="overlay__hint">or press <kbd>Space</kbd></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ------------------------- Buttons ------------------------- -->
+        <div class="controls" role="group" aria-label="Game controls">
+          <button type="button" class="btn btn--primary" id="btn-start">
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" /></svg>
+            <span id="btn-start-label">Start</span>
+          </button>
+
+          <button type="button" class="btn" id="btn-pause" disabled>
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" id="icon-pause"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" id="icon-resume" hidden><path d="M8 5v14l11-7z" /></svg>
+            <span id="btn-pause-label">Pause</span>
+          </button>
+
+          <button type="button" class="btn" id="btn-restart" disabled>
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A8 8 0 1 0 19.74 14h-2.09A6 6 0 1 1 12 6a5.96 5.96 0 0 1 4.22 1.78L13 11h7V4z" /></svg>
+            <span>Restart</span>
+          </button>
+
+          <button type="button" class="btn btn--icon" id="btn-sound" aria-pressed="true" aria-label="Mute sound effects" title="Sound effects">
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" id="icon-sound-on"><path d="M3 9v6h4l5 5V4L7 9zm12.5 3A4.5 4.5 0 0 0 13 7.97v8.06A4.5 4.5 0 0 0 15.5 12M13 2.35v2.06a7.5 7.5 0 0 1 0 15.18v2.06a9.5 9.5 0 0 0 0-19.3" /></svg>
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" id="icon-sound-off" hidden><path d="M3 9v6h4l5 5V4L7 9zm18.5-2.09L20.09 5.5 17.5 8.09 14.91 5.5 13.5 6.91 16.09 9.5 13.5 12.09l1.41 1.41 2.59-2.59 2.59 2.59 1.41-1.41L18.91 9.5z" /></svg>
+          </button>
+        </div>
+
+        <!-- ------------------------- Touch D-pad ------------------------- -->
+        <div class="dpad" role="group" aria-label="Touch direction controls">
+          <button type="button" class="dpad__btn dpad__btn--up" data-direction="up" aria-label="Move up">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 7.5 19 16H5z" /></svg>
+          </button>
+          <button type="button" class="dpad__btn dpad__btn--left" data-direction="left" aria-label="Move left">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7.5 12 16 5v14z" /></svg>
+          </button>
+          <button type="button" class="dpad__btn dpad__btn--down" data-direction="down" aria-label="Move down">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16.5 5 8h14z" /></svg>
+          </button>
+          <button type="button" class="dpad__btn dpad__btn--right" data-direction="right" aria-label="Move right">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.5 12 8 19V5z" /></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- ------------------------- Side panel ------------------------- -->
+      <aside class="panel" aria-label="How to play">
+        <section class="card">
+          <h2 class="card__title">Controls</h2>
+          <ul class="keylist">
+            <li><span class="keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>Steer the snake</span></li>
+            <li><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Steer the snake</span></li>
+            <li><span class="keys"><kbd>Space</kbd></span><span>Start / pause / resume</span></li>
+            <li><span class="keys"><kbd>P</kbd></span><span>Pause or resume</span></li>
+            <li><span class="keys"><kbd>R</kbd></span><span>Restart the run</span></li>
+            <li><span class="keys"><kbd>M</kbd></span><span>Mute or unmute</span></li>
+          </ul>
+          <p class="card__note">On a touch screen, use the direction pad under the board &mdash; or just swipe across the board itself.</p>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">How it works</h2>
+          <ul class="legend">
+            <li><span class="swatch swatch--snake" aria-hidden="true"></span>Your snake &mdash; it grows with every bite</li>
+            <li><span class="swatch swatch--food" aria-hidden="true"></span>Fruit &mdash; worth <b>10 &times; level</b> points</li>
+            <li><span class="swatch swatch--wall" aria-hidden="true"></span>Walls &mdash; touching one ends the run</li>
+          </ul>
+          <p class="card__note">Every <b>4</b> fruits bumps you up a level, to a maximum of <b>level 10</b>. Each level makes the snake move noticeably quicker.</p>
+        </section>
+
+        <section class="card card--tip">
+          <h2 class="card__title">Tip</h2>
+          <p class="card__note">Hug the edges and always leave yourself an exit. Reversing straight into your own neck is blocked, so turn early rather than late.</p>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="colophon">
+      <p>Built with HTML5 Canvas and vanilla JavaScript &mdash; no frameworks, no backend. Your high score is saved in this browser.</p>
+    </footer>
+  </div>
+
+  <!-- Screen-reader-only live region for game state and score announcements -->
+  <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>
+
+  <noscript>
+    <p class="noscript">This game needs JavaScript to run. Please enable it and reload the page.</p>
+  </noscript>
+
+  <script src="script.js"></script>
+</body>
+</html>
