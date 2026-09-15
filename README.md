@@ -111,6 +111,25 @@ Works in any current version of Chrome, Edge, Firefox or Safari.
 
 ---
 
+## Deploy to Vercel
+
+This is a static site with no build step. The page is named `play.html`, while
+Vercel normally looks for `index.html` at the root URL. The included
+`vercel.json` rewrites `/` to `/play.html`, so the game opens at the main
+deployment URL instead of returning a 404.
+
+1. Import this repository into Vercel.
+2. Set **Framework Preset** to **Other**.
+3. Leave **Build Command** empty.
+4. Set **Output Directory** to `.`.
+5. Deploy from the folder containing `play.html`, `style.css`, `js/`, and
+  `vercel.json`.
+
+You can also open the game directly at `/play.html` if the deployment URL is
+already live.
+
+---
+
 ## Controls
 
 | Input | Action |
@@ -135,6 +154,7 @@ Pressing any direction key on the ready screen starts the game immediately.
 snakegame/
 ├── play.html         # Page structure: HUD, canvas, overlays, controls, themes
 ├── style.css         # Design tokens, theming, layout, components, responsive rules
+├── vercel.json       # Rewrites the Vercel root URL to play.html
 ├── js/
 │   ├── config.js     # Rules, enums, storage wrapper, easing helpers
 │   ├── themes.js     # Four palettes + the board backdrop renderer
