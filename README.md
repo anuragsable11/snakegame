@@ -91,7 +91,7 @@ No libraries, no frameworks, no network requests.
 
 **Option 1 — just open it**
 
-Double-click `index.html`, or drag it into any modern browser. Everything works
+Double-click `play.html`, or drag it into any modern browser. Everything works
 straight from the filesystem — the scripts are deliberately classic `<script>`
 tags rather than ES modules, because browsers block module loading over `file://`.
 
@@ -133,7 +133,7 @@ Pressing any direction key on the ready screen starts the game immediately.
 
 ```
 snakegame/
-├── index.html        # Page structure: HUD, canvas, overlays, controls, themes
+├── play.html         # Page structure: HUD, canvas, overlays, controls, themes
 ├── style.css         # Design tokens, theming, layout, components, responsive rules
 ├── js/
 │   ├── config.js     # Rules, enums, storage wrapper, easing helpers
