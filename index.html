@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#070b14" />
-  <meta name="description" content="Snake — a modern, neon take on the classic arcade game. Built with HTML5 Canvas and vanilla JavaScript." />
-  <title>Snake — Classic Arcade, Modern Neon</title>
+  <meta name="theme-color" content="#241A38" />
+  <meta name="description" content="Hungry Noodle — a goofy cartoon Snake game about a noodle that will not stop eating. Built with HTML5 Canvas and vanilla JavaScript." />
+  <title>Hungry Noodle — a very silly Snake game</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,14 +15,15 @@
     <header class="masthead">
       <div class="brand">
         <span class="brand__mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M4 17h6a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8" />
-            <circle cx="18.6" cy="5" r="1.7" class="brand__eye" />
+          <svg viewBox="0 0 32 32" focusable="false">
+            <path class="brand__noodle" d="M5 22c4 0 4-5 8-5s4 5 8 5 5-4 5-8a6 6 0 0 0-6-6" />
+            <circle class="brand__eye" cx="21.5" cy="9" r="2.6" />
+            <circle class="brand__pupil" cx="22.4" cy="9" r="1.1" />
           </svg>
         </span>
-        <h1 class="brand__title">Snake</h1>
+        <h1 class="brand__title">Hungry Noodle</h1>
       </div>
-      <p class="brand__tagline">Eat. Grow. Don&rsquo;t bite yourself.</p>
+      <p class="brand__tagline">He has eaten. He will eat again.</p>
     </header>
 
     <!-- ============================== Layout ============================== -->
@@ -33,15 +34,16 @@
 
         <div class="hud">
           <div class="stat">
-            <span class="stat__label">Score</span>
+            <span class="stat__label">🍔 Food</span>
             <span class="stat__value" id="score">0</span>
+            <span class="combo" id="combo" hidden>x2</span>
           </div>
           <div class="stat">
-            <span class="stat__label">High Score</span>
+            <span class="stat__label">👑 Best</span>
             <span class="stat__value stat__value--gold" id="high-score">0</span>
           </div>
           <div class="stat">
-            <span class="stat__label">Speed</span>
+            <span class="stat__label">🔥 Speed</span>
             <span class="stat__value" id="level">Lv 1</span>
             <span class="meter" aria-hidden="true"><span class="meter__fill" id="speed-bar"></span></span>
           </div>
@@ -49,22 +51,26 @@
 
         <div class="board" id="board-wrap">
           <canvas id="board" role="img"
-                  aria-label="Snake game board. Steer with the arrow keys or W A S D."></canvas>
+                  aria-label="Hungry Noodle board. Steer with the arrow keys or W A S D."></canvas>
+
+          <!-- The noodle's running commentary. Decorative: #announcer does the
+               real screen-reader work. -->
+          <div class="toast" id="toast" aria-hidden="true"><span class="toast__text" id="toast-text"></span></div>
 
           <!-- Overlays: exactly one card is visible per game state -->
           <div class="overlay">
             <div class="overlay__card" id="panel-ready">
               <p class="overlay__kicker">Ready</p>
-              <h2 class="overlay__title">Let&rsquo;s play</h2>
-              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the on-screen pad. Grab the glowing fruit to grow &mdash; the more you score, the faster it gets.</p>
-              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start Game</button>
+              <h2 class="overlay__title">Feed the noodle</h2>
+              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the pad below. Every snack makes him longer, greedier and <b>faster</b>. He has no self-control. Neither should you.</p>
+              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start eating 🍕</button>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
 
-            <div class="overlay__card" id="panel-paused" hidden>
+            <div class="overlay__card" id="panel-paused">
               <p class="overlay__kicker">Paused</p>
-              <h2 class="overlay__title">Take a breath</h2>
-              <p class="overlay__text">Your run is waiting exactly where you left it.</p>
+              <h2 class="overlay__title">Snack break</h2>
+              <p class="overlay__text">The noodle is waiting. Impatiently.</p>
               <div class="overlay__actions">
                 <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-resume">Resume</button>
                 <button type="button" class="btn btn--ghost btn--lg" id="btn-overlay-restart">Restart</button>
@@ -72,10 +78,10 @@
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
 
-            <div class="overlay__card" id="panel-gameover" hidden>
-              <p class="overlay__kicker overlay__kicker--danger" id="gameover-kicker">Game Over</p>
-              <h2 class="overlay__title" id="gameover-title">You crashed</h2>
-              <p class="overlay__text" id="gameover-reason">You hit the wall.</p>
+            <div class="overlay__card" id="panel-gameover">
+              <p class="overlay__kicker overlay__kicker--danger" id="gameover-kicker">NOODLE DOWN</p>
+              <h2 class="overlay__title" id="gameover-title">You hit the wall</h2>
+              <p class="overlay__text" id="gameover-reason">Bro forgot how to turn.</p>
               <dl class="scoreboard">
                 <div class="scoreboard__row">
                   <dt>Score</dt>
@@ -91,7 +97,7 @@
                 </div>
               </dl>
               <p class="badge-new" id="new-record" hidden>New High Score!</p>
-              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Play Again</button>
+              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Eat again 🍕</button>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
           </div>
@@ -121,6 +127,22 @@
           </button>
         </div>
 
+        <!-- ------------------------- Theme picker ------------------------- -->
+        <div class="themes" role="group" aria-label="Pick a theme">
+          <button type="button" class="theme-btn is-active" data-theme="noodle" aria-pressed="true">
+            <span class="theme-btn__emoji" aria-hidden="true">🍜</span> Noodle
+          </button>
+          <button type="button" class="theme-btn" data-theme="spicy" aria-pressed="false">
+            <span class="theme-btn__emoji" aria-hidden="true">🌶️</span> Spicy
+          </button>
+          <button type="button" class="theme-btn" data-theme="dessert" aria-pressed="false">
+            <span class="theme-btn__emoji" aria-hidden="true">🍩</span> Dessert
+          </button>
+          <button type="button" class="theme-btn" data-theme="alien" aria-pressed="false">
+            <span class="theme-btn__emoji" aria-hidden="true">👽</span> Alien
+          </button>
+        </div>
+
         <!-- ------------------------- Touch D-pad ------------------------- -->
         <div class="dpad" role="group" aria-label="Touch direction controls">
           <button type="button" class="dpad__btn dpad__btn--up" data-direction="up" aria-label="Move up">
@@ -143,35 +165,35 @@
         <section class="card">
           <h2 class="card__title">Controls</h2>
           <ul class="keylist">
-            <li><span class="keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>Steer the snake</span></li>
-            <li><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Steer the snake</span></li>
+            <li><span class="keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>Steer the noodle</span></li>
+            <li><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Steer the noodle</span></li>
             <li><span class="keys"><kbd>Space</kbd></span><span>Start / pause / resume</span></li>
             <li><span class="keys"><kbd>P</kbd></span><span>Pause or resume</span></li>
             <li><span class="keys"><kbd>R</kbd></span><span>Restart the run</span></li>
             <li><span class="keys"><kbd>M</kbd></span><span>Mute or unmute</span></li>
           </ul>
-          <p class="card__note">On a touch screen, use the direction pad under the board &mdash; or just swipe across the board itself.</p>
+          <p class="card__note">On a touch screen, use the pad under the board &mdash; or just swipe across the board itself.</p>
         </section>
 
         <section class="card">
-          <h2 class="card__title">How it works</h2>
+          <h2 class="card__title">The menu</h2>
           <ul class="legend">
-            <li><span class="swatch swatch--snake" aria-hidden="true"></span>Your snake &mdash; it grows with every bite</li>
-            <li><span class="swatch swatch--food" aria-hidden="true"></span>Fruit &mdash; worth <b>10 &times; level</b> points</li>
-            <li><span class="swatch swatch--wall" aria-hidden="true"></span>Walls &mdash; touching one ends the run</li>
+            <li><span class="swatch swatch--snake" aria-hidden="true"></span>The noodle &mdash; grows with every bite</li>
+            <li><span class="swatch swatch--food" aria-hidden="true"></span>Snacks &mdash; pizza, burgers, donuts, tacos&hellip; worth <b>10 &times; level</b></li>
+            <li><span class="swatch swatch--wall" aria-hidden="true"></span>Walls &mdash; the noodle's only real enemy</li>
           </ul>
-          <p class="card__note">Every <b>4</b> fruits bumps you up a level, to a maximum of <b>level 10</b>. Each level makes the snake move noticeably quicker.</p>
+          <p class="card__note">Every <b>4</b> snacks he levels up, to a maximum of <b>level 10</b>. Each level makes him noticeably faster and noticeably more unhinged.</p>
         </section>
 
         <section class="card card--tip">
-          <h2 class="card__title">Tip</h2>
-          <p class="card__note">Hug the edges and always leave yourself an exit. Reversing straight into your own neck is blocked, so turn early rather than late.</p>
+          <h2 class="card__title">Noodle wisdom</h2>
+          <p class="card__note">Hug the edges and always leave yourself an exit. He physically cannot reverse into his own neck, so turn early rather than late.</p>
         </section>
       </aside>
     </main>
 
     <footer class="colophon">
-      <p>Built with HTML5 Canvas and vanilla JavaScript &mdash; no frameworks, no backend. Your high score is saved in this browser.</p>
+      <p>HTML5 Canvas and vanilla JavaScript &mdash; no frameworks, no backend, no snacks harmed. Your best score is saved in this browser.</p>
     </footer>
   </div>
 
@@ -182,6 +204,12 @@
     <p class="noscript">This game needs JavaScript to run. Please enable it and reload the page.</p>
   </noscript>
 
-  <script src="script.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/themes.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/banter.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
 </body>
 </html>

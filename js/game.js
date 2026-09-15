@@ -1,189 +1,28 @@
 /**
- * Snake — a modern take on the classic arcade game.
+ * HUNGRY NOODLE — game state, simulation, rendering, input and UI.
  *
- * Vanilla JavaScript + HTML5 Canvas, no dependencies.
- * The whole game lives inside one IIFE so nothing leaks onto `window`.
+ * This is the orchestrator. The pure-drawing modules (art, themes, particles),
+ * the sound module and the comedy writer are all loaded before it and reached
+ * through the HungryNoodle namespace.
  *
- * Architecture
- *   config      — tunable gameplay constants
- *   storage     — safe localStorage wrapper (private mode can throw)
- *   audio       — Web Audio API sound effects, generated on the fly
- *   state       — the single mutable game-state object
- *   simulation  — fixed-timestep stepping (move / eat / collide)
- *   rendering   — requestAnimationFrame drawing, interpolated for smoothness
- *   input       — keyboard, on-screen d-pad, swipe
- *   ui          — DOM syncing driven by the current game state
+ * The simulation below (stepping, collision, food, scoring, levels) is the
+ * original game logic, unchanged — the cartoon makeover is entirely in the
+ * rendering and presentation layers.
  */
-(() => {
+(function (NS) {
   'use strict';
 
-  /* ====================================================================== *
-   * Configuration
-   * ====================================================================== */
-
-  const GRID_SIZE = 20;          // board is GRID_SIZE x GRID_SIZE cells
-  const START_LENGTH = 3;        // segments the snake starts with
-  const BASE_STEP_MS = 150;      // ms between moves at level 1
-  const STEP_DECREMENT_MS = 9;   // ms shaved off per level gained
-  const MIN_STEP_MS = 66;        // speed ceiling
-  const FOOD_PER_LEVEL = 4;      // fruits needed to advance one level
-  const MAX_LEVEL = 10;
-  const POINTS_PER_FOOD = 10;    // multiplied by the current level
-  const MAX_QUEUED_TURNS = 2;    // buffered turns, so fast inputs aren't lost
-
-  const STORAGE_KEY_HIGH_SCORE = 'snake.highScore.v1';
-  const STORAGE_KEY_MUTED = 'snake.muted.v1';
-
-  /** The four states the game can be in. */
-  const GameState = Object.freeze({
-    READY: 'READY',
-    PLAYING: 'PLAYING',
-    PAUSED: 'PAUSED',
-    GAME_OVER: 'GAME_OVER',
-  });
-
-  const DIRECTIONS = Object.freeze({
-    up: { x: 0, y: -1 },
-    down: { x: 0, y: 1 },
-    left: { x: -1, y: 0 },
-    right: { x: 1, y: 0 },
-  });
-
-  const OPPOSITE = Object.freeze({
-    up: 'down', down: 'up', left: 'right', right: 'left',
-  });
-
-  /** Arrow keys and WASD both steer. */
-  const KEY_TO_DIRECTION = Object.freeze({
-    arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right',
-    w: 'up', s: 'down', a: 'left', d: 'right',
-  });
-
-  const COLORS = Object.freeze({
-    boardFrom: '#0a1120',
-    boardTo: '#0d1729',
-    grid: 'rgba(120, 160, 220, 0.055)',
-    checker: 'rgba(255, 255, 255, 0.014)',
-    wall: 'rgba(126, 152, 199, 0.22)',
-    snakeHead: '#8dffcd',
-    snakeMid: '#3ef2a1',
-    snakeTail: '#12b37a',
-    snakeGlow: 'rgba(62, 242, 161, 0.45)',
-    dead: '#ff5c7a',
-    foodCore: '#ffc2cf',
-    foodMid: '#ff4d6d',
-    foodEdge: '#c9184a',
-    foodGlow: 'rgba(255, 77, 109, 0.55)',
-  });
-
-  const prefersReducedMotion =
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  /* ====================================================================== *
-   * Storage — never let a blocked localStorage break the game
-   * ====================================================================== */
-
-  const storage = {
-    read(key, fallback) {
-      try {
-        const value = window.localStorage.getItem(key);
-        return value === null ? fallback : value;
-      } catch {
-        return fallback;
-      }
-    },
-    write(key, value) {
-      try {
-        window.localStorage.setItem(key, String(value));
-      } catch {
-        /* Private browsing or a full quota — scores just won't persist. */
-      }
-    },
-  };
-
-  /* ====================================================================== *
-   * Audio — short effects synthesised with the Web Audio API (no files)
-   * ====================================================================== */
-
-  const audio = (() => {
-    let context = null;
-    let master = null;
-    let muted = storage.read(STORAGE_KEY_MUTED, 'false') === 'true';
-
-    /** Lazily create the context; browsers require a user gesture first. */
-    function ensureContext() {
-      if (context) {
-        if (context.state === 'suspended') context.resume();
-        return context;
-      }
-      const Ctor = window.AudioContext || window.webkitAudioContext;
-      if (!Ctor) return null;
-      try {
-        context = new Ctor();
-        master = context.createGain();
-        master.gain.value = muted ? 0 : 1;
-        master.connect(context.destination);
-      } catch {
-        context = null;
-      }
-      return context;
-    }
-
-    /** One enveloped oscillator note. */
-    function note({ freq, toFreq, type = 'sine', duration = 0.12, volume = 0.16, delay = 0 }) {
-      const ctx = ensureContext();
-      if (!ctx || muted) return;
-
-      const start = ctx.currentTime + delay;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, start);
-      if (toFreq) osc.frequency.exponentialRampToValueAtTime(toFreq, start + duration);
-
-      // Exponential ramps can't touch zero, so fade to a near-silent value.
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(volume, start + 0.014);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-      osc.connect(gain).connect(master);
-      osc.start(start);
-      osc.stop(start + duration + 0.03);
-    }
-
-    return {
-      unlock: ensureContext,
-      eat() {
-        note({ freq: 620, toFreq: 950, type: 'triangle', duration: 0.09, volume: 0.18 });
-        note({ freq: 940, toFreq: 1180, type: 'sine', duration: 0.08, volume: 0.1, delay: 0.06 });
-      },
-      levelUp() {
-        [523.25, 659.25, 783.99].forEach((freq, i) => {
-          note({ freq, type: 'triangle', duration: 0.13, volume: 0.13, delay: i * 0.07 });
-        });
-      },
-      gameOver() {
-        note({ freq: 420, toFreq: 110, type: 'sawtooth', duration: 0.5, volume: 0.15 });
-        note({ freq: 150, toFreq: 60, type: 'sine', duration: 0.6, volume: 0.2, delay: 0.06 });
-      },
-      click() {
-        note({ freq: 340, toFreq: 460, type: 'triangle', duration: 0.05, volume: 0.09 });
-      },
-      turn() {
-        note({ freq: 220, type: 'sine', duration: 0.035, volume: 0.05 });
-      },
-      isMuted() {
-        return muted;
-      },
-      setMuted(value) {
-        muted = value;
-        storage.write(STORAGE_KEY_MUTED, muted);
-        if (master) master.gain.value = muted ? 0 : 1;
-        if (!muted) ensureContext();
-      },
-    };
-  })();
+  const CONFIG = NS.CONFIG;
+  const KEYS = NS.STORAGE_KEYS;
+  const GameState = NS.GameState;
+  const DIRECTIONS = NS.DIRECTIONS;
+  const OPPOSITE = NS.OPPOSITE;
+  const KEY_TO_DIRECTION = NS.KEY_TO_DIRECTION;
+  const storage = NS.storage;
+  const clamp = NS.clamp;
+  const easeOutCubic = NS.easeOutCubic;
+  const easeOutBack = NS.easeOutBack;
+  const reduced = NS.prefersReducedMotion;
 
   /* ====================================================================== *
    * DOM references
@@ -199,6 +38,9 @@
     highScore: $('high-score'),
     level: $('level'),
     speedBar: $('speed-bar'),
+    combo: $('combo'),
+    toast: $('toast'),
+    toastText: $('toast-text'),
     panelReady: $('panel-ready'),
     panelPaused: $('panel-paused'),
     panelGameOver: $('panel-gameover'),
@@ -223,11 +65,21 @@
     btnOverlayResume: $('btn-overlay-resume'),
     btnOverlayRestart: $('btn-overlay-restart'),
     btnOverlayAgain: $('btn-overlay-again'),
+    themes: document.querySelector('.themes'),
     dpad: document.querySelector('.dpad'),
     announcer: $('announcer'),
   };
 
   const ctx = el.canvas.getContext('2d');
+
+  /* ====================================================================== *
+   * Collaborators
+   * ====================================================================== */
+
+  const audio = NS.createAudio(storage);
+  const particles = NS.createParticles(reduced ? 40 : 170);
+  const banter = NS.createBanter();
+  const FOODS = NS.FOODS;
 
   /* ====================================================================== *
    * Game state
@@ -239,52 +91,110 @@
     previousSnake: [],    // positions one step ago, used to interpolate motion
     direction: 'right',   // the committed heading
     queuedTurns: [],      // buffered turns applied one per step
-    food: { x: 0, y: 0 },
+    food: { x: 0, y: 0, type: 0, spawnedAt: 0 },
     score: 0,
     highScore: 0,
     foodEaten: 0,
     level: 1,
-    stepMs: BASE_STEP_MS,
+    stepMs: CONFIG.BASE_STEP_MS,
     accumulator: 0,       // ms carried toward the next step
     lastFrameTime: 0,
     deathCause: 'wall',   // 'wall' | 'self' | 'win'
-    particles: [],
-    deathFlash: 0,        // 0..1, decays after a crash
-    shake: 0,             // screen-shake amplitude in cells
+
+    // Presentation-only state
+    theme: null,
+    backdrop: null,       // pre-rendered board layer
+    lastEatAt: -99999,
+    diedAt: 0,
+    streak: 0,
+    lastStreakAt: -99999,
+    lastCloseAt: -99999,
+    lastTurnAt: 0,
+    eatFx: null,          // the food "pop" ghost left behind after a bite
+    scorePops: [],        // floating +10s
+    deathFlash: 0,
+    shake: 0,
+    toastTimer: 0,
+
     // Rendering geometry, recalculated on resize
     cssSize: 0,
     cell: 0,
     dpr: 1,
-    background: null,     // pre-rendered board, redrawn only on resize
   };
 
   /* ====================================================================== *
-   * Helpers
+   * Small helpers
    * ====================================================================== */
-
-  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
   const samePosition = (a, b) => a.x === b.x && a.y === b.y;
 
   /** Step duration for a level — higher level, shorter step. */
   function stepDurationForLevel(level) {
-    return Math.max(MIN_STEP_MS, BASE_STEP_MS - (level - 1) * STEP_DECREMENT_MS);
+    return Math.max(
+      CONFIG.MIN_STEP_MS,
+      CONFIG.BASE_STEP_MS - (level - 1) * CONFIG.STEP_DECREMENT_MS
+    );
   }
 
   function announce(message) {
     el.announcer.textContent = message;
   }
 
+  /** Pop a funny line into the speech bubble — the writer decides if it speaks. */
+  function say(trigger, context) {
+    const line = banter.pick(trigger, context || {});
+    if (!line) return;
+    el.toastText.textContent = line;
+    el.toast.classList.add('is-visible');
+    window.clearTimeout(state.toastTimer);
+    state.toastTimer = window.setTimeout(() => {
+      el.toast.classList.remove('is-visible');
+    }, CONFIG.TOAST_MS);
+  }
+
+  function hideToast() {
+    window.clearTimeout(state.toastTimer);
+    el.toast.classList.remove('is-visible');
+  }
+
+  /* ====================================================================== *
+   * Themes
+   * ====================================================================== */
+
+  function setTheme(id, options) {
+    const theme = NS.THEMES[id] || NS.THEMES.noodle;
+    state.theme = theme;
+    storage.write(KEYS.THEME, theme.id);
+    el.body.dataset.theme = theme.id;
+
+    renderBackdrop();
+    syncThemeButtons();
+
+    if (options && options.announce) {
+      announce(`${theme.name} theme.`);
+      say('theme', { name: theme.name });
+    }
+  }
+
+  function syncThemeButtons() {
+    if (!el.themes) return;
+    for (const button of el.themes.querySelectorAll('[data-theme]')) {
+      const active = button.dataset.theme === state.theme.id;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
   /* ====================================================================== *
    * Setup and lifecycle
    * ====================================================================== */
 
-  /** Build the starting snake: centred, heading right, tail trailing left. */
+  /** Build the starting noodle: centred, heading right, tail trailing left. */
   function createStartingSnake() {
-    const midY = Math.floor(GRID_SIZE / 2);
-    const headX = Math.floor(GRID_SIZE / 2);
+    const midY = Math.floor(CONFIG.GRID_SIZE / 2);
+    const headX = Math.floor(CONFIG.GRID_SIZE / 2);
     const snake = [];
-    for (let i = 0; i < START_LENGTH; i += 1) {
+    for (let i = 0; i < CONFIG.START_LENGTH; i += 1) {
       snake.push({ x: headX - i, y: midY });
     }
     return snake;
@@ -301,10 +211,17 @@
     state.level = 1;
     state.stepMs = stepDurationForLevel(1);
     state.accumulator = 0;
-    state.particles = [];
+    state.deathCause = 'wall';
+    state.lastEatAt = -99999;
+    state.streak = 0;
+    state.lastStreakAt = -99999;
+    state.lastCloseAt = -99999;
+    state.eatFx = null;
+    state.scorePops.length = 0;
     state.deathFlash = 0;
     state.shake = 0;
-    state.deathCause = 'wall';
+    particles.clear();
+    banter.reset();
     spawnFood();
     setStatus(GameState.READY);
     updateStats();
@@ -319,13 +236,17 @@
     audio.unlock();
     resetGame();
     state.lastFrameTime = performance.now();
+    state.lastTurnAt = state.lastFrameTime;
     setStatus(GameState.PLAYING);
+    audio.start();
     announce('Game started. Good luck!');
+    say('start', {});
   }
 
   function pauseGame() {
     if (state.status !== GameState.PLAYING) return;
     setStatus(GameState.PAUSED);
+    hideToast();
     announce(`Paused at ${state.score} points.`);
     focusOverlayButton(el.btnOverlayResume);
   }
@@ -355,18 +276,36 @@
       case GameState.PAUSED:
         resumeGame();
         break;
+      default:
+        break;
     }
   }
 
   function endGame(cause) {
+    const now = performance.now();
     state.deathCause = cause;
+    state.diedAt = now;
     state.deathFlash = 1;
-    state.shake = prefersReducedMotion ? 0 : 0.35;
+    state.shake = reduced ? 0 : 0.42;
+    hideToast();
+
+    const head = state.snake[0];
+    if (cause !== 'win') {
+      particles.emit('splat', (head.x + 0.5) * state.cell, (head.y + 0.5) * state.cell, {
+        color: state.theme.body,
+        count: 18,
+        scale: reduced ? 0 : 1,
+      });
+    }
 
     const isRecord = state.score > state.highScore && state.score > 0;
     if (isRecord) {
       state.highScore = state.score;
-      storage.write(STORAGE_KEY_HIGH_SCORE, state.highScore);
+      storage.write(KEYS.HIGH_SCORE, state.highScore);
+      particles.emit('confetti', state.cssSize / 2, state.cssSize * 0.3, {
+        count: 30,
+        scale: reduced ? 0 : 1,
+      });
     }
 
     updateStats();
@@ -376,20 +315,22 @@
     el.newRecord.hidden = !isRecord;
 
     if (cause === 'win') {
-      el.gameOverKicker.textContent = 'Perfect run';
+      el.gameOverKicker.textContent = 'PERFECT NOODLE';
       el.gameOverKicker.classList.remove('overlay__kicker--danger');
-      el.gameOverTitle.textContent = 'You filled the board!';
-      el.gameOverReason.textContent = 'There is nowhere left for fruit to spawn. Nothing left to prove.';
+      el.gameOverTitle.textContent = 'You ate the whole board';
+      el.gameOverReason.textContent = 'There is literally nothing left. Take a nap.';
     } else {
-      el.gameOverKicker.textContent = 'Game Over';
+      el.gameOverKicker.textContent = 'NOODLE DOWN';
       el.gameOverKicker.classList.add('overlay__kicker--danger');
-      el.gameOverTitle.textContent = 'You crashed';
-      el.gameOverReason.textContent = cause === 'self'
-        ? 'You ran into your own tail.'
-        : 'You hit the wall.';
+      el.gameOverTitle.textContent = cause === 'self' ? 'You ate yourself' : 'You hit the wall';
+      el.gameOverReason.textContent =
+        banter.pick('over', { cause, score: state.score }) ||
+        (cause === 'self' ? 'The noodle bit the noodle.' : 'The wall was right there.');
     }
 
-    audio.gameOver();
+    if (isRecord) audio.record();
+    else audio.gameOver(cause);
+
     setStatus(GameState.GAME_OVER);
     announce(
       `Game over. ${state.score} points with a length of ${state.snake.length}.` +
@@ -403,31 +344,39 @@
    * ====================================================================== */
 
   /**
-   * Place fruit on a random free cell. Picking from the list of free cells
-   * (rather than retrying random spots) stays fast even when the board is
-   * nearly full, and tells us straight away when the player has won.
+   * Place a random snack on a random free cell. Picking from the list of free
+   * cells (rather than retrying random spots) stays fast even when the board
+   * is nearly full, and tells us straight away when the player has won.
    */
   function spawnFood() {
     const occupied = new Set(state.snake.map((segment) => `${segment.x},${segment.y}`));
     const free = [];
 
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      for (let x = 0; x < GRID_SIZE; x += 1) {
+    for (let y = 0; y < CONFIG.GRID_SIZE; y += 1) {
+      for (let x = 0; x < CONFIG.GRID_SIZE; x += 1) {
         if (!occupied.has(`${x},${y}`)) free.push({ x, y });
       }
     }
 
     if (free.length === 0) return false;
-    state.food = free[Math.floor(Math.random() * free.length)];
+
+    const cell = free[Math.floor(Math.random() * free.length)];
+    // Never serve the same snack twice in a row — variety is the joke.
+    let type = Math.floor(Math.random() * FOODS.length);
+    if (FOODS.length > 1 && type === state.food.type) {
+      type = (type + 1 + Math.floor(Math.random() * (FOODS.length - 1))) % FOODS.length;
+    }
+
+    state.food = { x: cell.x, y: cell.y, type, spawnedAt: performance.now() };
     return true;
   }
 
   /* ====================================================================== *
-   * Simulation
+   * Simulation  (unchanged rules from the original game)
    * ====================================================================== */
 
   /**
-   * Advance the snake by exactly one cell.
+   * Advance the noodle by exactly one cell.
    * Fatal moves are detected *before* they are applied, so the snake never
    * ends up rendered inside a wall or inside itself.
    */
@@ -437,6 +386,7 @@
     // snake back into its own neck.
     if (state.queuedTurns.length > 0) {
       state.direction = state.queuedTurns.shift();
+      state.lastTurnAt = performance.now();
     }
 
     const vector = DIRECTIONS[state.direction];
@@ -444,7 +394,8 @@
     const nextHead = { x: head.x + vector.x, y: head.y + vector.y };
 
     // Wall collision
-    if (nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= GRID_SIZE || nextHead.y >= GRID_SIZE) {
+    if (nextHead.x < 0 || nextHead.y < 0 ||
+        nextHead.x >= CONFIG.GRID_SIZE || nextHead.y >= CONFIG.GRID_SIZE) {
       endGame('wall');
       return;
     }
@@ -464,21 +415,55 @@
     if (!willEat) state.snake.pop();
 
     if (willEat) eatFood(nextHead);
+    else noticeNearMiss(nextHead, vector);
   }
 
   function eatFood(position) {
+    const now = performance.now();
+    const eaten = FOODS[state.food.type];
+
     state.foodEaten += 1;
-    state.score += POINTS_PER_FOOD * state.level;
+    state.score += CONFIG.POINTS_PER_FOOD * state.level;
 
-    spawnParticles(position);
-    audio.eat();
+    // A "hunger streak" is eating again quickly — it drives the sound pitch
+    // and the little combo chip, but never the score, so it can't snowball.
+    state.streak = (now - state.lastStreakAt < CONFIG.STREAK_WINDOW_MS)
+      ? state.streak + 1
+      : 1;
+    state.lastStreakAt = now;
+    state.lastEatAt = now;
 
-    const nextLevel = clamp(Math.floor(state.foodEaten / FOOD_PER_LEVEL) + 1, 1, MAX_LEVEL);
+    // Leave a pop ghost and a burst of crumbs where the snack was
+    state.eatFx = { x: position.x, y: position.y, type: state.food.type, at: now };
+    particles.emit('crumb', (position.x + 0.5) * state.cell, (position.y + 0.5) * state.cell, {
+      color: eaten.crumb,
+      count: 12,
+      scale: reduced ? 0 : 1,
+    });
+    state.scorePops.push({
+      x: (position.x + 0.5) * state.cell,
+      y: (position.y + 0.5) * state.cell,
+      text: `+${CONFIG.POINTS_PER_FOOD * state.level}`,
+      at: now,
+    });
+
+    audio.eat({ streak: state.streak, count: state.foodEaten });
+
+    const nextLevel = clamp(
+      Math.floor(state.foodEaten / CONFIG.FOOD_PER_LEVEL) + 1, 1, CONFIG.MAX_LEVEL
+    );
     if (nextLevel !== state.level) {
       state.level = nextLevel;
       state.stepMs = stepDurationForLevel(state.level);
       audio.levelUp();
-      announce(`Level ${state.level}. The snake is faster now.`);
+      particles.emit('star', (position.x + 0.5) * state.cell, (position.y + 0.5) * state.cell, {
+        count: 10,
+        scale: reduced ? 0 : 1,
+      });
+      announce(`Level ${state.level}. The noodle is faster now.`);
+      say('level', { level: state.level });
+    } else {
+      say('eat', { score: state.score, streak: state.streak, level: state.level });
     }
 
     updateStats();
@@ -487,8 +472,24 @@
     if (!spawnFood()) endGame('win');
   }
 
+  /** Spot a squeaky-bum moment so the noodle can comment on it. */
+  function noticeNearMiss(head, vector) {
+    const now = performance.now();
+    if (now - state.lastCloseAt < 6000) return;
+
+    const ahead = { x: head.x + vector.x, y: head.y + vector.y };
+    const offBoard = ahead.x < 0 || ahead.y < 0 ||
+      ahead.x >= CONFIG.GRID_SIZE || ahead.y >= CONFIG.GRID_SIZE;
+    const intoSelf = state.snake.slice(0, -1).some((s) => samePosition(s, ahead));
+
+    if (offBoard || intoSelf) {
+      state.lastCloseAt = now;
+      say('close', {});
+    }
+  }
+
   /** Accumulate real time and run as many fixed steps as it pays for. */
-  function update(deltaMs) {
+  function update(deltaMs, now) {
     if (state.status === GameState.PLAYING) {
       state.accumulator += deltaMs;
       // Guard against huge deltas (a backgrounded tab) running dozens of steps.
@@ -504,47 +505,86 @@
         }
       }
       if (state.accumulator > state.stepMs) state.accumulator = 0;
+
+      // The noodle gets bored if you hold one direction for ages
+      if (now - state.lastTurnAt > 9000) {
+        state.lastTurnAt = now;
+        say('idle', { seconds: 9 });
+      }
     }
 
-    updateParticles(deltaMs);
+    particles.update(deltaMs);
 
     if (state.deathFlash > 0) state.deathFlash = Math.max(0, state.deathFlash - deltaMs / 420);
     if (state.shake > 0) state.shake = Math.max(0, state.shake - deltaMs / 300);
+
+    // Retire finished score popups
+    for (let i = state.scorePops.length - 1; i >= 0; i -= 1) {
+      if (now - state.scorePops[i].at > 900) state.scorePops.splice(i, 1);
+    }
+    if (state.eatFx && now - state.eatFx.at > 320) state.eatFx = null;
   }
 
   /* ====================================================================== *
-   * Particles (celebration burst when fruit is eaten)
+   * The noodle's face — what it is feeling right now
    * ====================================================================== */
 
-  function spawnParticles(cellPosition) {
-    if (prefersReducedMotion) return;
-    const count = 14;
-    for (let i = 0; i < count; i += 1) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
-      const speed = 2.6 + Math.random() * 3.4; // cells per second
-      state.particles.push({
-        x: cellPosition.x + 0.5,
-        y: cellPosition.y + 0.5,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 1,
-        decay: 1.6 + Math.random() * 1.2,
-        size: 0.08 + Math.random() * 0.08, // in cells
-      });
-    }
+  /** How far the snack is, in cells, from the head. */
+  function foodDistance() {
+    const head = state.snake[0];
+    return Math.abs(state.food.x - head.x) + Math.abs(state.food.y - head.y);
   }
 
-  function updateParticles(deltaMs) {
-    if (state.particles.length === 0) return;
-    const seconds = deltaMs / 1000;
-    state.particles = state.particles.filter((particle) => {
-      particle.x += particle.vx * seconds;
-      particle.y += particle.vy * seconds;
-      particle.vx *= 0.92;
-      particle.vy *= 0.92;
-      particle.life -= particle.decay * seconds;
-      return particle.life > 0;
-    });
+  function currentExpression(now) {
+    if (state.status === GameState.GAME_OVER) {
+      if (state.deathCause === 'win') return 'eating';
+      return now - state.diedAt < CONFIG.HURT_MS ? 'hurt' : 'dead';
+    }
+    if (now - state.lastEatAt < CONFIG.CHEW_MS) return 'eating';
+    if (state.status === GameState.PLAYING) {
+      if (state.level >= 7) return 'fast';
+      if (foodDistance() <= CONFIG.HUNGRY_RANGE) return 'hungry';
+    }
+    return 'idle';
+  }
+
+  /** Pupil bias: mostly the heading, nudged toward whatever smells good. */
+  function lookVector() {
+    const head = state.snake[0];
+    const dx = state.food.x - head.x;
+    const dy = state.food.y - head.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: clamp(dx / length, -1, 1) * 0.55, y: clamp(dy / length, -1, 1) * 0.55 };
+  }
+
+  function faceOptions(now) {
+    const expression = currentExpression(now);
+    const sinceEat = now - state.lastEatAt;
+
+    // A chew is one open-close pulse
+    const chew = sinceEat < CONFIG.CHEW_MS
+      ? Math.sin((sinceEat / CONFIG.CHEW_MS) * Math.PI)
+      : 0;
+
+    // Blink every ~3.4s unless the face is already doing something
+    let blink = 0;
+    if (!reduced && expression !== 'dead' && expression !== 'eating') {
+      const phase = now % 3400;
+      if (phase < 140) blink = Math.sin((phase / 140) * Math.PI);
+    }
+
+    const tongue = expression === 'hungry'
+      ? 0.45 + 0.35 * Math.sin(now / 180)
+      : (expression === 'dead' ? 1 : 0);
+
+    return {
+      dir: DIRECTIONS[state.direction],
+      expression,
+      chew,
+      blink,
+      tongue,
+      look: lookVector(),
+    };
   }
 
   /* ====================================================================== *
@@ -561,73 +601,33 @@
 
     state.cssSize = size;
     state.dpr = dpr;
-    state.cell = size / GRID_SIZE;
+    state.cell = size / CONFIG.GRID_SIZE;
 
     el.canvas.width = Math.round(size * dpr);
     el.canvas.height = Math.round(size * dpr);
 
-    renderBackground();
+    renderBackdrop();
   }
 
   /**
-   * The grid never changes between resizes, so draw it once into an offscreen
-   * canvas and blit it each frame.
+   * The board never changes between resizes or theme switches, so draw it once
+   * into an offscreen canvas and blit it each frame.
    */
-  function renderBackground() {
-    const size = state.cssSize;
-    const dpr = state.dpr;
-    const cell = state.cell;
-
-    const layer = document.createElement('canvas');
-    layer.width = Math.round(size * dpr);
-    layer.height = Math.round(size * dpr);
-
-    const g = layer.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const gradient = g.createLinearGradient(0, 0, size, size);
-    gradient.addColorStop(0, COLORS.boardFrom);
-    gradient.addColorStop(1, COLORS.boardTo);
-    g.fillStyle = gradient;
-    g.fillRect(0, 0, size, size);
-
-    // Checkerboard tint, so the grid reads as cells rather than just lines
-    g.fillStyle = COLORS.checker;
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      for (let x = 0; x < GRID_SIZE; x += 1) {
-        if ((x + y) % 2 === 0) g.fillRect(x * cell, y * cell, cell, cell);
-      }
-    }
-
-    g.strokeStyle = COLORS.grid;
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let i = 1; i < GRID_SIZE; i += 1) {
-      const offset = Math.round(i * cell) + 0.5;
-      g.moveTo(offset, 0);
-      g.lineTo(offset, size);
-      g.moveTo(0, offset);
-      g.lineTo(size, offset);
-    }
-    g.stroke();
-
-    // Inner wall line — a visual reminder of the deadly boundary
-    g.strokeStyle = COLORS.wall;
-    g.lineWidth = 2;
-    g.strokeRect(1, 1, size - 2, size - 2);
-
-    state.background = layer;
-  }
-
-  function circle(x, y, radius) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+  function renderBackdrop() {
+    if (!state.cssSize || !state.theme) return;
+    const layer = state.backdrop || document.createElement('canvas');
+    layer.width = Math.round(state.cssSize * state.dpr);
+    layer.height = Math.round(state.cssSize * state.dpr);
+    const layerCtx = layer.getContext('2d');
+    layerCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    NS.drawBackdrop(layerCtx, state.cssSize, state.cell, state.theme);
+    state.backdrop = layer;
   }
 
   function draw(now) {
     const size = state.cssSize;
-    if (!size) return;
+    if (!size || !state.theme) return;
+    const palette = state.theme;
 
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
@@ -635,81 +635,66 @@
     ctx.save();
     if (state.shake > 0) {
       const amount = state.shake * state.cell;
-      ctx.translate(
-        (Math.random() - 0.5) * amount,
-        (Math.random() - 0.5) * amount
-      );
+      ctx.translate((Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount);
     }
 
-    if (state.background) ctx.drawImage(state.background, 0, 0, size, size);
+    if (state.backdrop) ctx.drawImage(state.backdrop, 0, 0, size, size);
+    if (!reduced) NS.drawBackdropMotion(ctx, size, now, palette);
 
-    drawFood(now);
-    drawSnake(now);
-    drawParticles();
+    drawFood(now, palette);
+    drawNoodle(now, palette);
+    particles.draw(ctx, palette, now);
+    drawScorePops(now, palette);
 
     ctx.restore();
 
     if (state.deathFlash > 0) {
-      ctx.fillStyle = `rgba(255, 77, 109, ${state.deathFlash * 0.28})`;
+      ctx.fillStyle = `rgba(255, 90, 110, ${state.deathFlash * 0.26})`;
       ctx.fillRect(0, 0, size, size);
     }
   }
 
-  function drawFood(now) {
+  function drawFood(now, palette) {
     const cell = state.cell;
-    const cx = (state.food.x + 0.5) * cell;
-    const cy = (state.food.y + 0.5) * cell;
-    const pulse = prefersReducedMotion ? 1 : 1 + Math.sin(now / 240) * 0.07;
-    const radius = cell * 0.33 * pulse;
+
+    // The pop ghost of whatever was just eaten
+    if (state.eatFx) {
+      const age = (now - state.eatFx.at) / 320;
+      const scale = 1 + easeOutCubic(age) * 0.9;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - age);
+      ctx.translate((state.eatFx.x + 0.5) * cell, (state.eatFx.y + 0.5) * cell);
+      ctx.scale(scale, scale);
+      FOODS[state.eatFx.type].draw(ctx, cell * 0.92, now, palette);
+      ctx.restore();
+    }
+
+    const food = state.food;
+    const definition = FOODS[food.type];
+    const age = clamp((now - food.spawnedAt) / 280, 0, 1);
+    const scale = reduced ? 1 : easeOutBack(age);
+    const bob = reduced ? 0 : Math.sin(now / 420 + food.x * 1.7) * cell * 0.07;
+    const tilt = reduced ? 0 : Math.sin(now / 760 + food.y * 1.3) * 0.13;
 
     ctx.save();
-    ctx.shadowColor = COLORS.foodGlow;
-    ctx.shadowBlur = cell * 0.9;
-
-    const body = ctx.createRadialGradient(
-      cx - radius * 0.35, cy - radius * 0.4, radius * 0.1,
-      cx, cy, radius
-    );
-    body.addColorStop(0, COLORS.foodCore);
-    body.addColorStop(0.45, COLORS.foodMid);
-    body.addColorStop(1, COLORS.foodEdge);
-    ctx.fillStyle = body;
-    circle(cx, cy, radius);
-    ctx.restore();
-
-    // Leaf
-    ctx.save();
-    ctx.translate(cx + radius * 0.34, cy - radius * 0.88);
-    ctx.rotate(-0.5);
-    ctx.fillStyle = COLORS.snakeMid;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * 0.42, radius * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // Specular highlight
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-    ctx.beginPath();
-    ctx.ellipse(
-      cx - radius * 0.32, cy - radius * 0.34,
-      radius * 0.2, radius * 0.13, -0.6, 0, Math.PI * 2
-    );
-    ctx.fill();
+    ctx.translate((food.x + 0.5) * cell, (food.y + 0.5) * cell + bob);
+    ctx.rotate(tilt);
+    ctx.scale(scale, scale);
+    definition.draw(ctx, cell * 0.92, now, palette);
     ctx.restore();
   }
 
-  function drawSnake(now) {
+  function drawNoodle(now, palette) {
     const cell = state.cell;
 
-    // How far through the current step we are — this is what makes the snake
+    // How far through the current step we are — this is what makes the noodle
     // glide between cells instead of teleporting.
     const t = state.status === GameState.PLAYING
       ? clamp(state.accumulator / state.stepMs, 0, 1)
       : 1;
 
     // Interpolate each segment from where it was to where it is. When the
-    // snake grew this step the new tail has no previous position, so it
+    // noodle grew this step the new tail has no previous position, so it
     // simply stays put.
     const points = state.snake.map((segment, index) => {
       const previous = state.previousSnake[index] || segment;
@@ -719,97 +704,42 @@
       };
     });
 
-    const head = points[0];
-    const tail = points[points.length - 1];
     const dead = state.status === GameState.GAME_OVER && state.deathCause !== 'win';
+    const sinceEat = now - state.lastEatAt;
+    const grow = sinceEat < CONFIG.GROW_MS ? clamp(sinceEat / CONFIG.GROW_MS, 0, 1) : 0;
 
-    const path = new Path2D();
-    path.moveTo(head.x, head.y);
-    for (let i = 1; i < points.length; i += 1) path.lineTo(points[i].x, points[i].y);
+    NS.drawNoodleBody(ctx, points, cell, now, palette, {
+      dead,
+      grow,
+      speed: (state.level - 1) / (CONFIG.MAX_LEVEL - 1),
+    });
 
-    const gradient = ctx.createLinearGradient(head.x, head.y, tail.x, tail.y);
-    gradient.addColorStop(0, dead ? COLORS.dead : COLORS.snakeHead);
-    gradient.addColorStop(0.5, dead ? '#d34a68' : COLORS.snakeMid);
-    gradient.addColorStop(1, dead ? '#8e2f45' : COLORS.snakeTail);
+    const head = points[0];
+    ctx.save();
+    ctx.translate(head.x, head.y);
+    NS.drawNoodleHead(ctx, cell, now, palette, faceOptions(now));
+    ctx.restore();
+  }
+
+  function drawScorePops(now, palette) {
+    if (state.scorePops.length === 0) return;
+    const size = Math.max(12, state.cell * 0.62);
 
     ctx.save();
-    ctx.lineCap = 'round';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `900 ${size}px "Trebuchet MS", system-ui, sans-serif`;
     ctx.lineJoin = 'round';
-    ctx.shadowColor = dead ? COLORS.foodGlow : COLORS.snakeGlow;
-    ctx.shadowBlur = cell * 0.7;
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = cell * 0.8;
+    ctx.lineWidth = size * 0.28;
 
-    if (points.length === 1) {
-      // A gradient between two identical points paints nothing, so a
-      // single-segment snake gets a flat fill instead.
-      ctx.fillStyle = dead ? COLORS.dead : COLORS.snakeMid;
-      circle(head.x, head.y, cell * 0.4);
-    } else {
-      ctx.stroke(path);
-    }
-    ctx.restore();
-
-    // Lighter core running down the middle, for a bit of dimension
-    if (points.length > 1) {
-      ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
-      ctx.lineWidth = cell * 0.32;
-      ctx.stroke(path);
-      ctx.restore();
-    }
-
-    drawHead(head, dead, now);
-  }
-
-  function drawHead(head, dead, now) {
-    const cell = state.cell;
-    const vector = DIRECTIONS[state.direction];
-    // Perpendicular to the heading — used to push the eyes apart
-    const side = { x: -vector.y, y: vector.x };
-
-    ctx.save();
-    ctx.fillStyle = dead ? COLORS.dead : COLORS.snakeHead;
-    circle(head.x, head.y, cell * 0.42);
-
-    // Eyes blink occasionally, purely for charm
-    const blinking = !prefersReducedMotion &&
-      state.status === GameState.PLAYING &&
-      Math.sin(now / 1400) > 0.985;
-
-    const forward = cell * 0.14;
-    const spread = cell * 0.17;
-    const eyeRadius = cell * (blinking ? 0.035 : 0.1);
-
-    for (const sign of [-1, 1]) {
-      const ex = head.x + vector.x * forward + side.x * spread * sign;
-      const ey = head.y + vector.y * forward + side.y * spread * sign;
-
-      ctx.fillStyle = '#ffffff';
-      circle(ex, ey, eyeRadius);
-
-      if (!blinking) {
-        ctx.fillStyle = dead ? '#5a0f20' : '#0a1120';
-        circle(
-          ex + vector.x * cell * 0.03,
-          ey + vector.y * cell * 0.03,
-          cell * 0.05
-        );
-      }
-    }
-    ctx.restore();
-  }
-
-  function drawParticles() {
-    if (state.particles.length === 0) return;
-    const cell = state.cell;
-    ctx.save();
-    for (const particle of state.particles) {
-      ctx.globalAlpha = clamp(particle.life, 0, 1);
-      ctx.fillStyle = COLORS.foodMid;
-      circle(particle.x * cell, particle.y * cell, particle.size * cell * particle.life);
+    for (const pop of state.scorePops) {
+      const age = (now - pop.at) / 900;
+      ctx.globalAlpha = clamp(1 - age * age, 0, 1);
+      const y = pop.y - easeOutCubic(age) * state.cell * 1.6;
+      ctx.strokeStyle = palette.ink;
+      ctx.strokeText(pop.text, pop.x, y);
+      ctx.fillStyle = palette.accent;
+      ctx.fillText(pop.text, pop.x, y);
     }
     ctx.restore();
   }
@@ -822,7 +752,7 @@
     const delta = Math.min(now - state.lastFrameTime, 250);
     state.lastFrameTime = now;
 
-    update(delta);
+    update(delta, now);
     draw(now);
 
     window.requestAnimationFrame(loop);
@@ -852,9 +782,10 @@
       : state.direction;
 
     if (name === last || name === OPPOSITE[last]) return;
-    if (state.queuedTurns.length >= MAX_QUEUED_TURNS) return;
+    if (state.queuedTurns.length >= CONFIG.MAX_QUEUED_TURNS) return;
 
     state.queuedTurns.push(name);
+    state.lastTurnAt = performance.now();
     audio.turn();
   }
 
@@ -900,11 +831,14 @@
       case 'escape':
         if (state.status === GameState.PLAYING) pauseGame();
         break;
+      default:
+        break;
     }
   }
 
   /** Briefly light up the matching d-pad key when steering with the keyboard. */
   function flashDpad(direction) {
+    if (!el.dpad) return;
     const button = el.dpad.querySelector(`[data-direction="${direction}"]`);
     if (!button) return;
     button.classList.add('is-pressed');
@@ -926,9 +860,8 @@
     announce(muted ? 'Sound muted.' : 'Sound on.');
   }
 
-  /* ------------------------------ Touch ---------------------------------- */
-
   function bindDpad() {
+    if (!el.dpad) return;
     for (const button of el.dpad.querySelectorAll('[data-direction]')) {
       const direction = button.dataset.direction;
 
@@ -993,7 +926,7 @@
     // Force a reflow so the animation can retrigger on consecutive scores.
     void element.offsetWidth;
     element.classList.add('is-bumped');
-    window.setTimeout(() => element.classList.remove('is-bumped'), 240);
+    window.setTimeout(() => element.classList.remove('is-bumped'), 260);
   }
 
   function updateStats() {
@@ -1003,7 +936,14 @@
     }
     el.highScore.textContent = state.highScore;
     el.level.textContent = `Lv ${state.level}`;
-    el.speedBar.style.width = `${(state.level / MAX_LEVEL) * 100}%`;
+    el.speedBar.style.width = `${(state.level / CONFIG.MAX_LEVEL) * 100}%`;
+
+    if (el.combo) {
+      const show = state.streak >= 2 && state.status === GameState.PLAYING;
+      el.combo.hidden = !show;
+      if (show) el.combo.textContent = `x${state.streak}`;
+    }
+
     updateCanvasLabel();
   }
 
@@ -1011,7 +951,7 @@
   function updateCanvasLabel() {
     el.canvas.setAttribute(
       'aria-label',
-      `Snake game board, ${state.status.toLowerCase().replace('_', ' ')}. ` +
+      `Hungry Noodle board, ${state.status.toLowerCase().replace('_', ' ')}. ` +
       `Score ${state.score}, length ${state.snake.length}, level ${state.level}. ` +
       'Steer with the arrow keys or W A S D.'
     );
@@ -1019,7 +959,7 @@
 
   /** Reflect the current game state in the DOM. Single source of truth. */
   function syncUI() {
-    const { status } = state;
+    const status = state.status;
     const ready = status === GameState.READY;
     const playing = status === GameState.PLAYING;
     const paused = status === GameState.PAUSED;
@@ -1032,7 +972,7 @@
     el.panelGameOver.hidden = !over;
 
     el.btnStart.disabled = playing || paused;
-    el.btnStartLabel.textContent = over ? 'New Game' : 'Start';
+    el.btnStartLabel.textContent = over ? 'Again' : 'Start';
 
     el.btnPause.disabled = !(playing || paused);
     el.btnPauseLabel.textContent = paused ? 'Resume' : 'Pause';
@@ -1041,9 +981,13 @@
 
     el.btnRestart.disabled = ready;
 
-    for (const button of el.dpad.querySelectorAll('[data-direction]')) {
-      button.disabled = over;
+    if (el.dpad) {
+      for (const button of el.dpad.querySelectorAll('[data-direction]')) {
+        button.disabled = over;
+      }
     }
+
+    if (el.combo && !playing) el.combo.hidden = true;
 
     updateCanvasLabel();
   }
@@ -1070,6 +1014,14 @@
     el.btnPause.addEventListener('click', togglePause);
     el.btnOverlayResume.addEventListener('click', resumeGame);
     el.btnSound.addEventListener('click', () => setMuted(!audio.isMuted()));
+
+    if (el.themes) {
+      el.themes.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-theme]');
+        if (!button) return;
+        setTheme(button.dataset.theme, { announce: true });
+      });
+    }
 
     // A soft tick for every button except the d-pad, which has its own sound.
     document.addEventListener('click', (event) => {
@@ -1101,11 +1053,12 @@
   }
 
   function init() {
-    state.highScore = Number.parseInt(storage.read(STORAGE_KEY_HIGH_SCORE, '0'), 10) || 0;
+    state.highScore = Number.parseInt(storage.read(KEYS.HIGH_SCORE, '0'), 10) || 0;
 
-    // Reflect the stored preference without creating an AudioContext or
+    // Reflect the stored preferences without creating an AudioContext or
     // announcing anything before the player has done a thing.
     syncSoundUI(audio.isMuted());
+    setTheme(storage.read(KEYS.THEME, 'noodle'));
 
     resizeCanvas();
     resetGame();
@@ -1116,4 +1069,4 @@
   }
 
   init();
-})();
+}(window.HungryNoodle));
