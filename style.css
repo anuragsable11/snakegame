@@ -789,6 +789,122 @@ kbd {
   text-align: center;
 }
 
+
+/* ------------------------------ Main menu -------------------------------- */
+.overlay__card--menu {
+  width: min(100%, 430px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding-block: 20px 22px;
+}
+
+.brand__3d {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--mint);
+  color: var(--ink);
+  font-size: 0.62em;
+  vertical-align: 0.22em;
+  text-shadow: none;
+  transform: rotate(3deg);
+}
+
+.btn--play { width: 100%; margin-top: 16px; }
+
+.menu-section { margin-top: 16px; text-align: left; }
+
+.menu-section__title {
+  margin-bottom: 7px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modes,
+.difficulties { width: 100%; }
+
+.modes .chip { flex: 1 1 42%; }
+
+.chip {
+  flex: 1 1 auto;
+  padding: 8px 10px 9px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  box-shadow: 0 4px 0 var(--ink);
+  transition: transform var(--speed) var(--ease), background var(--speed) var(--ease),
+              color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.chip:hover { transform: translateY(-2px); }
+.chip:active { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
+
+.chip.is-active {
+  background: var(--noodle);
+  color: var(--ink);
+}
+
+.menu-best {
+  margin-top: 16px;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+}
+
+.menu-best b { color: var(--gold); font-size: 1.05rem; }
+
+/* The menu hides the in-game chrome so it reads as a real front screen */
+body[data-screen="menu"] .controls,
+body[data-screen="menu"] .dpad { opacity: 0.45; pointer-events: none; }
+
+body[data-screen="menu"] .hud { opacity: 0.55; }
+
+/* ------------------------------ Timer chip ------------------------------- */
+.stat--timer .stat__value { color: var(--mint); }
+
+.stat--timer.is-urgent { animation: timer-pulse 0.9s ease-in-out infinite; }
+.stat--timer.is-urgent .stat__value { color: var(--danger); }
+
+@keyframes timer-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.04); }
+}
+
+/* Four HUD chips when the clock is showing */
+.hud:has(.stat--timer:not([hidden])) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* --------------------------- Renderer toggle ----------------------------- */
+.btn--render {
+  width: auto;
+  min-width: 52px;
+  margin-left: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.btn--render[aria-pressed="true"] { background: var(--mint); color: var(--ink); }
+
+.legend--modes li { display: list-item; margin-left: 1.1em; list-style: none; }
+.legend--modes b { color: var(--noodle); }
+
 /* ------------------------------- Responsive ------------------------------ */
 @media (max-width: 900px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
@@ -883,6 +999,13 @@ kbd {
   }
   .dpad__btn { border-radius: 16px; }
   .dpad__btn svg { width: 26px; height: 26px; }
+
+  .overlay__card--menu { padding: 16px 14px 18px; }
+  .menu-section { margin-top: 12px; }
+  .chip { font-size: 0.72rem; padding: 7px 8px 8px; }
+  .hud { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hud:has(.stat--timer:not([hidden])) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
   /* Theme chips become emoji-only — the aria-label carries the name */
   .themes { margin-top: 12px; gap: 6px; }

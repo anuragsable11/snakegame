@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#241A38" />
-  <meta name="description" content="Hungry Noodle — a goofy cartoon Snake game about a noodle that will not stop eating. Built with HTML5 Canvas and vanilla JavaScript." />
-  <title>Hungry Noodle — a very silly Snake game</title>
+  <meta name="description" content="Hungry Noodle 3D — a goofy cartoon Snake game rendered with Three.js. Four modes, three difficulties, eight ridiculous snacks." />
+  <title>Play — Hungry Noodle 3D</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,7 +13,7 @@
 
     <!-- ============================== Header ============================== -->
     <header class="masthead">
-      <div class="brand">
+      <a class="brand" href="index.html" aria-label="Hungry Noodle 3D home">
         <span class="brand__mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" focusable="false">
             <path class="brand__noodle" d="M5 22c4 0 4-5 8-5s4 5 8 5 5-4 5-8a6 6 0 0 0-6-6" />
@@ -21,8 +21,8 @@
             <circle class="brand__pupil" cx="22.4" cy="9" r="1.1" />
           </svg>
         </span>
-        <h1 class="brand__title">Hungry Noodle</h1>
-      </div>
+        <h1 class="brand__title">Hungry Noodle <span class="brand__3d">3D</span></h1>
+      </a>
       <p class="brand__tagline">He has eaten. He will eat again.</p>
     </header>
 
@@ -47,6 +47,10 @@
             <span class="stat__value" id="level">Lv 1</span>
             <span class="meter" aria-hidden="true"><span class="meter__fill" id="speed-bar"></span></span>
           </div>
+          <div class="stat stat--timer" id="timer-chip" hidden>
+            <span class="stat__label">⏱️ Time</span>
+            <span class="stat__value" id="timer">60.0</span>
+          </div>
         </div>
 
         <div class="board" id="board-wrap">
@@ -57,17 +61,50 @@
                real screen-reader work. -->
           <div class="toast" id="toast" aria-hidden="true"><span class="toast__text" id="toast-text"></span></div>
 
-          <!-- Overlays: exactly one card is visible per game state -->
+          <!-- Overlays: exactly one card is visible at a time -->
           <div class="overlay">
-            <div class="overlay__card" id="panel-ready">
+
+            <!-- ---------------------- Main menu ---------------------- -->
+            <div class="overlay__card overlay__card--menu" id="panel-menu">
+              <p class="overlay__kicker">Hungry Noodle 3D</p>
+              <h2 class="overlay__title" id="menu-mode-name">🐍 Classic</h2>
+              <p class="overlay__text" id="menu-mode-blurb">Walls kill. Pure, traditional Snake.</p>
+
+              <button type="button" class="btn btn--primary btn--lg btn--play" id="btn-play">Play 🍕</button>
+
+              <div class="menu-section">
+                <h3 class="menu-section__title" id="modes-label">Game mode</h3>
+                <div class="chips modes" role="group" aria-labelledby="modes-label">
+                  <button type="button" class="chip is-active" data-value="classic" aria-pressed="true">🐍 Classic</button>
+                  <button type="button" class="chip" data-value="timeattack" aria-pressed="false">⏱️ Time Attack</button>
+                  <button type="button" class="chip" data-value="survival" aria-pressed="false">🧱 Survival</button>
+                  <button type="button" class="chip" data-value="endless" aria-pressed="false">♾️ Endless</button>
+                </div>
+              </div>
+
+              <div class="menu-section">
+                <h3 class="menu-section__title" id="difficulty-label">Difficulty</h3>
+                <div class="chips difficulties" role="group" aria-labelledby="difficulty-label">
+                  <button type="button" class="chip" data-value="easy" aria-pressed="false">🍼 Easy</button>
+                  <button type="button" class="chip is-active" data-value="normal" aria-pressed="true">🍜 Normal</button>
+                  <button type="button" class="chip" data-value="hard" aria-pressed="false">🌶️ Hard</button>
+                </div>
+              </div>
+
+              <p class="menu-best">Best in this mode: <b id="menu-best">0</b></p>
+            </div>
+
+            <!-- ---------------------- Ready ---------------------- -->
+            <div class="overlay__card" id="panel-ready" hidden>
               <p class="overlay__kicker">Ready</p>
               <h2 class="overlay__title">Feed the noodle</h2>
-              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the pad below. Every snack makes him longer, greedier and <b>faster</b>. He has no self-control. Neither should you.</p>
+              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the pad below. Every snack makes him longer, greedier and <b>faster</b>.</p>
               <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start eating 🍕</button>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
 
-            <div class="overlay__card" id="panel-paused">
+            <!-- ---------------------- Paused ---------------------- -->
+            <div class="overlay__card" id="panel-paused" hidden>
               <p class="overlay__kicker">Paused</p>
               <h2 class="overlay__title">Snack break</h2>
               <p class="overlay__text">The noodle is waiting. Impatiently.</p>
@@ -78,7 +115,8 @@
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
 
-            <div class="overlay__card" id="panel-gameover">
+            <!-- ---------------------- Game over ---------------------- -->
+            <div class="overlay__card" id="panel-gameover" hidden>
               <p class="overlay__kicker overlay__kicker--danger" id="gameover-kicker">NOODLE DOWN</p>
               <h2 class="overlay__title" id="gameover-title">You hit the wall</h2>
               <p class="overlay__text" id="gameover-reason">Bro forgot how to turn.</p>
@@ -97,7 +135,10 @@
                 </div>
               </dl>
               <p class="badge-new" id="new-record" hidden>New High Score!</p>
-              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Eat again 🍕</button>
+              <div class="overlay__actions">
+                <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Eat again 🍕</button>
+                <button type="button" class="btn btn--ghost btn--lg" id="btn-overlay-menu">Main menu</button>
+              </div>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
           </div>
@@ -105,7 +146,7 @@
 
         <!-- ------------------------- Buttons ------------------------- -->
         <div class="controls" role="group" aria-label="Game controls">
-          <button type="button" class="btn btn--primary" id="btn-start">
+          <button type="button" class="btn btn--primary" id="btn-start" disabled>
             <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" /></svg>
             <span id="btn-start-label">Start</span>
           </button>
@@ -119,6 +160,15 @@
           <button type="button" class="btn" id="btn-restart" disabled>
             <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A8 8 0 1 0 19.74 14h-2.09A6 6 0 1 1 12 6a5.96 5.96 0 0 1 4.22 1.78L13 11h7V4z" /></svg>
             <span>Restart</span>
+          </button>
+
+          <button type="button" class="btn" id="btn-menu" aria-label="Back to the main menu">
+            <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z" /></svg>
+            <span>Menu</span>
+          </button>
+
+          <button type="button" class="btn btn--icon btn--render" id="btn-render" aria-pressed="true" aria-label="Switch to 2D graphics" title="Toggle 3D / 2D graphics">
+            <span id="btn-render-label">3D</span>
           </button>
 
           <button type="button" class="btn btn--icon" id="btn-sound" aria-pressed="true" aria-label="Mute sound effects" title="Sound effects">
@@ -167,22 +217,24 @@
           <ul class="keylist">
             <li><span class="keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>Steer the noodle</span></li>
             <li><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Steer the noodle</span></li>
-            <li><span class="keys"><kbd>Space</kbd></span><span>Start / pause / resume</span></li>
+            <li><span class="keys"><kbd>Space</kbd></span><span>Play / pause / resume</span></li>
             <li><span class="keys"><kbd>P</kbd></span><span>Pause or resume</span></li>
             <li><span class="keys"><kbd>R</kbd></span><span>Restart the run</span></li>
+            <li><span class="keys"><kbd>Esc</kbd></span><span>Pause, then back to the menu</span></li>
             <li><span class="keys"><kbd>M</kbd></span><span>Mute or unmute</span></li>
           </ul>
           <p class="card__note">On a touch screen, use the pad under the board &mdash; or just swipe across the board itself.</p>
         </section>
 
         <section class="card">
-          <h2 class="card__title">The menu</h2>
-          <ul class="legend">
-            <li><span class="swatch swatch--snake" aria-hidden="true"></span>The noodle &mdash; grows with every bite</li>
-            <li><span class="swatch swatch--food" aria-hidden="true"></span>Snacks &mdash; pizza, burgers, donuts, tacos&hellip; worth <b>10 &times; level</b></li>
-            <li><span class="swatch swatch--wall" aria-hidden="true"></span>Walls &mdash; the noodle's only real enemy</li>
+          <h2 class="card__title">Game modes</h2>
+          <ul class="legend legend--modes">
+            <li><b>🐍 Classic</b> &mdash; walls kill. Traditional Snake.</li>
+            <li><b>⏱️ Time Attack</b> &mdash; race the clock; every snack buys seconds.</li>
+            <li><b>🧱 Survival</b> &mdash; bins keep appearing and the board closes in.</li>
+            <li><b>♾️ Endless</b> &mdash; no walls, you wrap around, and it never stops speeding up.</li>
           </ul>
-          <p class="card__note">Every <b>4</b> snacks he levels up, to a maximum of <b>level 10</b>. Each level makes him noticeably faster and noticeably more unhinged.</p>
+          <p class="card__note">Difficulty changes real numbers: speed, how many snacks a level takes, how many bins appear and how long the clock runs.</p>
         </section>
 
         <section class="card card--tip">
@@ -193,7 +245,7 @@
     </main>
 
     <footer class="colophon">
-      <p>HTML5 Canvas and vanilla JavaScript &mdash; no frameworks, no backend, no snacks harmed. Your best score is saved in this browser.</p>
+      <p>HTML5 Canvas, Three.js and vanilla JavaScript &mdash; no frameworks, no backend, no snacks harmed. Your best score is saved in this browser.</p>
     </footer>
   </div>
 
@@ -204,12 +256,20 @@
     <p class="noscript">This game needs JavaScript to run. Please enable it and reload the page.</p>
   </noscript>
 
+  <!-- Three.js r147 (UMD), vendored locally so the game still runs from file:// -->
+  <script src="vendor/three.min.js"></script>
+
   <script src="js/config.js"></script>
   <script src="js/themes.js"></script>
   <script src="js/art.js"></script>
   <script src="js/particles.js"></script>
   <script src="js/banter.js"></script>
   <script src="js/audio.js"></script>
-  <script src="js/game.js"></script>
+  <script src="js/core/engine.js"></script>
+  <script src="js/render/face.js"></script>
+  <script src="js/render/renderer2d.js"></script>
+  <script src="js/render/renderer3d.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>

@@ -14,17 +14,33 @@ window.HungryNoodle = window.HungryNoodle || {};
 
   /* ---------------------------------------------------------------- Rules */
 
+  /**
+   * The menu, as pure data. Both renderers map over this by index — the 2D one
+   * attaches a canvas `draw`, the 3D one builds a Three.js group — so the
+   * engine can talk about "food type 3" without knowing what a pizza is.
+   */
+  NS.FOOD_CATALOGUE = Object.freeze([
+    { id: 'pizza', name: 'pizza', crumb: '#FFC55C' },
+    { id: 'burger', name: 'burger', crumb: '#F0B462' },
+    { id: 'donut', name: 'donut', crumb: '#FF8FC5' },
+    { id: 'banana', name: 'banana', crumb: '#FFE14D' },
+    { id: 'taco', name: 'taco', crumb: '#F2B233' },
+    { id: 'fries', name: 'fries', crumb: '#FFD470' },
+    { id: 'apple', name: 'apple', crumb: '#E93B4E' },
+    { id: 'cake', name: 'cake', crumb: '#FF7FB0' },
+  ]);
+
+  NS.FOOD_TYPES = NS.FOOD_CATALOGUE.length;
+
   NS.CONFIG = Object.freeze({
     GRID_SIZE: 20,          // board is GRID_SIZE x GRID_SIZE cells
     START_LENGTH: 3,        // segments the noodle starts with
-    BASE_STEP_MS: 150,      // ms between moves at level 1
-    STEP_DECREMENT_MS: 9,   // ms shaved off per level gained
-    MIN_STEP_MS: 66,        // speed ceiling
-    FOOD_PER_LEVEL: 4,      // fruits needed to advance one level
-    MAX_LEVEL: 10,
+    MAX_LEVEL: 10,          // default cap; each mode can raise it
     POINTS_PER_FOOD: 10,    // multiplied by the current level
     MAX_QUEUED_TURNS: 2,    // buffered turns, so fast inputs aren't lost
     STREAK_WINDOW_MS: 4200, // eat again inside this to keep a hunger streak
+    // Speed, level pacing and obstacles now live in NS.DIFFICULTIES / NS.MODES
+    // (see core/engine.js) so difficulty changes real numbers, not labels.
     CHEW_MS: 280,           // how long the "eating" face lasts
     GROW_MS: 620,           // how long the swallow-bulge travels the body
     HURT_MS: 520,           // how long the "ouch" face lasts before going dead
@@ -33,10 +49,21 @@ window.HungryNoodle = window.HungryNoodle || {};
   });
 
   NS.STORAGE_KEYS = Object.freeze({
-    HIGH_SCORE: 'snake.highScore.v1',  // kept from v1 so old scores survive
+    HIGH_SCORE: 'snake.highScore.v1',  // classic: kept from v1 so old scores survive
+    HIGH_SCORE_PREFIX: 'noodle.high.',  // per-mode bests: noodle.high.<mode>
     MUTED: 'snake.muted.v1',
     THEME: 'noodle.theme.v1',
+    MODE: 'noodle.mode.v1',
+    DIFFICULTY: 'noodle.difficulty.v1',
+    RENDERER: 'noodle.renderer.v1',
   });
+
+  /** Classic keeps the original key so existing high scores survive. */
+  NS.highScoreKey = function highScoreKey(modeId) {
+    return modeId === 'classic'
+      ? NS.STORAGE_KEYS.HIGH_SCORE
+      : NS.STORAGE_KEYS.HIGH_SCORE_PREFIX + modeId;
+  };
 
   /** The four states the game can be in. */
   NS.GameState = Object.freeze({

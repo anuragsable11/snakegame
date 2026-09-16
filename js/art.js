@@ -523,18 +523,27 @@
   }
 
   /**
-   * The menu. `crumb` is the particle colour thrown when this one is eaten.
+   * Canvas draw routines keyed by the shared catalogue id, then merged into
+   * NS.FOODS in catalogue order so the engine's "food type 3" always means the
+   * same snack in every renderer.
    */
-  NS.FOODS = [
-    { id: 'pizza', name: 'pizza', draw: drawPizza, crumb: '#FFC55C' },
-    { id: 'burger', name: 'burger', draw: drawBurger, crumb: '#F0B462' },
-    { id: 'donut', name: 'donut', draw: drawDonut, crumb: '#FF8FC5' },
-    { id: 'banana', name: 'banana', draw: drawBanana, crumb: '#FFE14D' },
-    { id: 'taco', name: 'taco', draw: drawTaco, crumb: '#F2B233' },
-    { id: 'fries', name: 'fries', draw: drawFries, crumb: '#FFD470' },
-    { id: 'apple', name: 'apple', draw: drawApple, crumb: '#E93B4E' },
-    { id: 'cake', name: 'cake', draw: drawCake, crumb: '#FF7FB0' },
-  ];
+  const DRAWERS = {
+    pizza: drawPizza,
+    burger: drawBurger,
+    donut: drawDonut,
+    banana: drawBanana,
+    taco: drawTaco,
+    fries: drawFries,
+    apple: drawApple,
+    cake: drawCake,
+  };
+
+  NS.FOODS = NS.FOOD_CATALOGUE.map((item) => ({
+    id: item.id,
+    name: item.name,
+    crumb: item.crumb,
+    draw: DRAWERS[item.id],
+  }));
 
   /* ====================================================================== *
    * THE NOODLE — body first, then the face

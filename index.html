@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#241A38" />
+  <meta name="description" content="Hungry Noodle 3D — a goofy cartoon Snake game rendered in Three.js. Four modes, three difficulties, eight ridiculous snacks, one noodle with no self-control. Free to play in your browser." />
+  <title>Hungry Noodle 3D — a very silly Snake game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="is-landing">
+  <div class="landing">
+
+    <!-- ============================== Nav ============================== -->
+    <nav class="nav" aria-label="Site">
+      <a class="nav__brand" href="index.html" aria-label="Hungry Noodle 3D home">
+        <span class="brand__mark brand__mark--small" aria-hidden="true">
+          <svg viewBox="0 0 32 32" focusable="false">
+            <path class="brand__noodle" d="M5 22c4 0 4-5 8-5s4 5 8 5 5-4 5-8a6 6 0 0 0-6-6" />
+            <circle class="brand__eye" cx="21.5" cy="9" r="2.6" />
+            <circle class="brand__pupil" cx="22.4" cy="9" r="1.1" />
+          </svg>
+        </span>
+        <span class="nav__name">Hungry Noodle <span class="brand__3d">3D</span></span>
+      </a>
+      <ul class="nav__links">
+        <li><a class="nav__link" href="#features">Features</a></li>
+        <li><a class="nav__link" href="#modes">Modes</a></li>
+        <li><a class="nav__link" href="#controls">Controls</a></li>
+      </ul>
+      <a class="btn btn--primary nav__cta" href="play.html">Play now 🍕</a>
+    </nav>
+
+    <!-- ============================== Hero ============================== -->
+    <header class="hero">
+      <div class="hero__copy">
+        <p class="hero__kicker">A very silly Snake game</p>
+        <h1 class="hero__title">Hungry<br />Noodle <span class="brand__3d brand__3d--big">3D</span></h1>
+        <p class="hero__sub">He is a noodle. He is hungry. He has <b>no self-control</b> and neither will you. Steer him around a 3D arcade arena eating pizza, burgers and cake until he is too long to live with.</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary btn--lg" href="play.html">Play now 🍕</a>
+          <a class="btn btn--ghost btn--lg" href="#features">See what's inside</a>
+        </div>
+        <ul class="hero__facts" aria-label="Quick facts">
+          <li>🕹️ Free, in your browser</li>
+          <li>📱 Desktop &amp; mobile</li>
+          <li>🚫 No install, no account</li>
+        </ul>
+      </div>
+
+      <div class="hero__demo">
+        <div class="demo">
+          <p class="demo__badge">Live demo · he's driving himself</p>
+          <div class="demo__frame" id="demo-wrap">
+            <canvas id="demo" role="img" aria-label="A live demo of Hungry Noodle 3D, playing itself."></canvas>
+          </div>
+          <div class="demo__foot">
+            <span class="demo__stat">🍔 <b id="demo-score">0</b></span>
+            <span class="demo__caption" id="demo-caption">warming up…</span>
+            <span class="demo__stat" id="demo-mode">3D</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============================== Features ============================== -->
+    <section class="section" id="features" aria-labelledby="features-title">
+      <h2 class="section__title" id="features-title">What's inside</h2>
+      <p class="section__lead">Everything is built from scratch — the 3D models are procedural geometry, the sounds are synthesised, the jokes are hand-written. Nothing is downloaded from anywhere.</p>
+
+      <div class="features">
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">🎮</span>
+          <h3 class="feature__title">A real 3D arena</h3>
+          <p class="feature__text">Three.js renders a raised checkered board with chunky walls, soft shadows and a camera that gently follows the action without making you seasick.</p>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">🐍</span>
+          <h3 class="feature__title">An expressive noodle</h3>
+          <p class="feature__text">Big eyes that track where he's going and whatever smells good. Six faces — content, hungry, chomping, panicking, hurt, and very much dead.</p>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">🍕</span>
+          <h3 class="feature__title">Eight ridiculous snacks</h3>
+          <p class="feature__text">Pizza, burger, donut, banana, taco, fries, apple and cake — all modelled from primitives, all spinning and bobbing, all about to be eaten.</p>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">💬</span>
+          <h3 class="feature__title">Running commentary</h3>
+          <p class="feature__text">Over ninety lines that escalate from "YUM!" to "ABSOLUTE UNIT" as the run gets absurd — and the restraint to stay quiet most of the time.</p>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">🔊</span>
+          <h3 class="feature__title">Cartoon sound</h3>
+          <p class="feature__text">Wet chomps that pitch up with your streak, a level-up fanfare, a deflating game-over slide, and a comedy burp every seventh snack. Mute any time.</p>
+        </article>
+        <article class="feature">
+          <span class="feature__icon" aria-hidden="true">🛟</span>
+          <h3 class="feature__title">Runs anywhere</h3>
+          <p class="feature__text">Phone, tablet or desktop. If your browser has no WebGL it quietly switches to the 2D renderer — same game, same noodle, same jokes.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============================== Modes ============================== -->
+    <section class="section section--alt" id="modes" aria-labelledby="modes-title">
+      <h2 class="section__title" id="modes-title">Four ways to eat</h2>
+      <p class="section__lead">Pick a mode and a difficulty from the main menu. Difficulty changes real numbers — speed, snacks per level, how many bins spawn, how long the clock runs.</p>
+
+      <div class="modes-grid">
+        <article class="mode-card">
+          <span class="mode-card__emoji" aria-hidden="true">🐍</span>
+          <h3 class="mode-card__title">Classic</h3>
+          <p class="mode-card__text">Walls kill. Pure, traditional Snake with a level cap of ten.</p>
+        </article>
+        <article class="mode-card">
+          <span class="mode-card__emoji" aria-hidden="true">⏱️</span>
+          <h3 class="mode-card__title">Time Attack</h3>
+          <p class="mode-card__text">Race a countdown. Every snack buys you seconds. Run out and it's over.</p>
+        </article>
+        <article class="mode-card">
+          <span class="mode-card__emoji" aria-hidden="true">🧱</span>
+          <h3 class="mode-card__title">Survival</h3>
+          <p class="mode-card__text">Bins keep appearing. The board fills up around you. Don't hit one.</p>
+        </article>
+        <article class="mode-card">
+          <span class="mode-card__emoji" aria-hidden="true">♾️</span>
+          <h3 class="mode-card__title">Endless</h3>
+          <p class="mode-card__text">No walls — wrap to the other side. It never stops getting faster.</p>
+        </article>
+      </div>
+
+      <div class="diff-wrap">
+        <table class="diff-table">
+          <caption class="sr-only">How each difficulty changes the game</caption>
+          <thead>
+            <tr><th scope="col"></th><th scope="col">🍼 Easy</th><th scope="col">🍜 Normal</th><th scope="col">🌶️ Hard</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Speed at level 1</th><td>185 ms</td><td>150 ms</td><td>118 ms</td></tr>
+            <tr><th scope="row">Top speed</th><td>104 ms</td><td>66 ms</td><td>50 ms</td></tr>
+            <tr><th scope="row">Snacks per level</th><td>5</td><td>4</td><td>3</td></tr>
+            <tr><th scope="row">Survival bins at start</th><td>0</td><td>2</td><td>5</td></tr>
+            <tr><th scope="row">Time Attack clock</th><td>75 s</td><td>60 s</td><td>45 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================== Controls ============================== -->
+    <section class="section" id="controls" aria-labelledby="controls-title">
+      <h2 class="section__title" id="controls-title">Controls</h2>
+      <div class="controls-grid">
+        <article class="control-card">
+          <h3 class="control-card__title">⌨️ Keyboard</h3>
+          <ul class="keylist">
+            <li><span class="keys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>Steer</span></li>
+            <li><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Steer</span></li>
+            <li><span class="keys"><kbd>Space</kbd></span><span>Play / pause / resume</span></li>
+            <li><span class="keys"><kbd>R</kbd></span><span>Restart</span></li>
+            <li><span class="keys"><kbd>M</kbd></span><span>Mute</span></li>
+          </ul>
+        </article>
+        <article class="control-card">
+          <h3 class="control-card__title">📱 Touch</h3>
+          <p class="control-card__text">A big thumb-friendly direction pad sits under the board on phones and tablets — or just swipe across the board itself. The layout is built so the board and the pad are always on screen together.</p>
+        </article>
+        <article class="control-card">
+          <h3 class="control-card__title">🎨 Themes</h3>
+          <p class="control-card__text">Four looks — Hungry Noodle, Spicy, Dessert Monster and Alien — that repaint the arena and the whole page. Your pick is remembered.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============================== CTA ============================== -->
+    <section class="cta-band" aria-labelledby="cta-title">
+      <h2 class="cta-band__title" id="cta-title">Ready to eat? 🐍</h2>
+      <p class="cta-band__text">He has been waiting this whole time. Rude, honestly.</p>
+      <a class="btn btn--primary btn--lg" href="play.html">Play Hungry Noodle 3D</a>
+    </section>
+
+    <footer class="landing-footer">
+      <p>HTML5, CSS3, vanilla JavaScript and Three.js. No frameworks, no backend, no snacks harmed. Works offline once loaded.</p>
+    </footer>
+  </div>
+
+  <!-- Three.js r147 (UMD), vendored locally so this runs from file:// too -->
+  <script src="vendor/three.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/themes.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/banter.js"></script>
+  <script src="js/core/engine.js"></script>
+  <script src="js/render/face.js"></script>
+  <script src="js/render/renderer2d.js"></script>
+  <script src="js/render/renderer3d.js"></script>
+  <script src="js/landing.js"></script>
+</body>
+</html>
