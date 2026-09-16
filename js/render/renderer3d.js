@@ -220,6 +220,43 @@
     let tilesLight = null;
     let tilesDark = null;
 
+    let environmentMap = null;
+
+    /**
+     * A sky/ground gradient turned into an environment map.
+     *
+     * MeshStandardMaterial is physically based: without something to reflect
+     * it renders flat and lifeless however many lights you add. This is the
+     * cheapest honest fix — a two-stop gradient through PMREMGenerator, which
+     * is already in the vendored build. Best-effort: if it fails the scene
+     * simply renders without it.
+     */
+    function applyEnvironment() {
+      if (environmentMap) return;
+      try {
+        const source = document.createElement('canvas');
+        source.width = 32;
+        source.height = 128;
+        const c = source.getContext('2d');
+        const sky = c.createLinearGradient(0, 0, 0, 128);
+        sky.addColorStop(0, '#9fc47a');     // light through the canopy
+        sky.addColorStop(0.5, '#4d6b33');
+        sky.addColorStop(1, '#2a2416');     // forest floor bounce
+        c.fillStyle = sky;
+        c.fillRect(0, 0, 32, 128);
+
+        const texture = new THREE.CanvasTexture(source);
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        environmentMap = pmrem.fromEquirectangular(texture).texture;
+        scene.environment = environmentMap;
+        texture.dispose();
+        pmrem.dispose();
+      } catch (error) {
+        environmentMap = null;
+      }
+    }
+
     /** The neutral studio setup the arcade board is lit with. */
     function applyArcadeLighting() {
       hemi.color.set('#ffffff');
@@ -251,7 +288,10 @@
       tilesDark = null;
       baseMesh = null;
 
-      if (worldOf(theme) !== 'jungle') applyArcadeLighting();
+      if (worldOf(theme) !== 'jungle') {
+        applyArcadeLighting();
+        scene.environment = null;
+      }
       buildArena(theme);
       builtWorld = worldOf(theme);
     }
@@ -266,11 +306,11 @@
      * the forest floor. The arcade world keeps its neutral studio setup.
      */
     function applyJungleLighting() {
-      hemi.color.set('#b9d69a');
-      hemi.groundColor.set('#2a2314');
-      hemi.intensity = 0.62;
-      key.color.set('#ffe6b0');
-      key.intensity = 1.5;
+      hemi.color.set('#cfe7b4');
+      hemi.groundColor.set('#3a3020');
+      hemi.intensity = 0.95;
+      key.color.set('#fff0cc');
+      key.intensity = 2.0;
       key.position.set(grid * 0.75, grid * 1.5, grid * 0.35);
       rim.color.set('#6f9a4a');
       rim.intensity = 0.42;
@@ -325,8 +365,11 @@
 
       if (worldOf(theme) === 'jungle') {
         jungle = NS.buildJungleWorld(THREE, {
-          scene, arena, grid, palette: theme, shadows, worldX, worldZ,
+          scene, arena, grid, palette: theme, shadows,
+          // So it can keep scenery out of the line of sight
+          camera: CAMERA_HOME,
         });
+        applyEnvironment();
         jungleSkin = jungle.makeSkin(theme);
         applyJungleLighting();
         return;
@@ -530,99 +573,219 @@
       return mesh;
     }
 
+    /*
+     * Prey, built from shared primitives.
+     *
+     * Each builder fills a Group that the caller positions, bobs and spins.
+     * Readability beats anatomy: these are about one cell across on screen, so
+     * every creature leans on one unmistakable silhouette cue — the beetle's
+     * split shell, the cricket's hind leg, the spider's leg spread, the frog's
+     * eyes, the mouse's ears, the lizard's tail.
+     */
     const FOOD_BUILDERS = {
-      pizza(group) {
-        // A wedge of cylinder, cheese on top, pepperoni, one olive
-        addPart(group, geo.wedge, toon('#F2C266'), [0, 0, 0], [0.86, 0.14, 0.86],
-          [0, Math.PI * 0.2, 0]);
-        addPart(group, geo.wedge, toon('#FFD98A'), [0, 0.09, 0], [0.8, 0.06, 0.8],
-          [0, Math.PI * 0.2, 0]);
-        addPart(group, geo.cylinder, toon('#E23B3B'), [0.14, 0.15, 0.1], [0.12, 0.05, 0.12]);
-        addPart(group, geo.cylinder, toon('#E23B3B'), [-0.05, 0.15, 0.22], [0.1, 0.05, 0.1]);
-        addPart(group, geo.tiny, toon('#3C7A3C'), [0.2, 0.16, -0.1], [0.08, 0.08, 0.08]);
-      },
-
-      burger(group) {
-        addPart(group, geo.cylinder, toon('#E3A45C'), [0, -0.2, 0], [0.78, 0.18, 0.78]);
-        addPart(group, geo.cylinder, toon('#7B4326'), [0, -0.04, 0], [0.82, 0.16, 0.82]);
-        addPart(group, geo.slab, toon('#FFC21F'), [0, 0.07, 0], [0.86, 0.04, 0.86],
-          [0, 0.4, 0]);
-        addPart(group, geo.cylinder, toon('#6BBF3A'), [0, 0.14, 0], [0.86, 0.06, 0.86]);
-        // Top bun: a squashed sphere, slightly askew
-        const bun = addPart(group, geo.segment, toon('#F0B462'), [0.03, 0.3, 0],
-          [0.82, 0.5, 0.82]);
-        bun.rotation.z = 0.12;
-        addPart(group, geo.tiny, basic('#FFF0D0'), [0.1, 0.46, 0.12], [0.06, 0.04, 0.06]);
-        addPart(group, geo.tiny, basic('#FFF0D0'), [-0.14, 0.44, -0.06], [0.06, 0.04, 0.06]);
-      },
-
-      donut(group) {
-        addPart(group, geo.torus, toon('#E8A85C'), [0, 0, 0], [1, 1, 1],
-          [Math.PI / 2, 0, 0]);
-        addPart(group, geo.torus, toon('#FF8FC5'), [0, 0.06, 0], [1.01, 1.01, 0.85],
-          [Math.PI / 2, 0, 0]);
-        const sprinkleColors = ['#5BD1C4', '#FFE08A', '#7CFF8E', '#FFFFFF', '#FF6B6B'];
-        for (let i = 0; i < 6; i += 1) {
-          const angle = (i / 6) * Math.PI * 2;
-          addPart(group, geo.slab, basic(sprinkleColors[i % sprinkleColors.length]),
-            [Math.cos(angle) * 0.34, 0.15, Math.sin(angle) * 0.34],
-            [0.1, 0.03, 0.03], [0, -angle + i, 0]);
+      beetle(group) {
+        // Domed shell with a visible seam down the middle
+        const shell = addPart(group, geo.segment, toon('#33502c'), [0, 0.1, 0],
+          [0.46, 0.3, 0.6]);
+        shell.rotation.x = 0.1;
+        addPart(group, geo.slab, toon('#1d2d19'), [0, 0.28, 0], [0.03, 0.06, 1.1]);
+        // Thorax and head out front
+        addPart(group, geo.segment, toon('#2a4224'), [0, 0.1, 0.5], [0.3, 0.2, 0.18]);
+        addPart(group, geo.segment, toon('#1d2d19'), [0, 0.1, 0.66], [0.19, 0.15, 0.14]);
+        // Six legs, three a side
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < 3; i += 1) {
+            addPart(group, geo.slab, toon('#16210f'),
+              [side * 0.4, -0.02, 0.3 - i * 0.32], [0.34, 0.05, 0.05],
+              [0, side * (0.5 - i * 0.35), 0]);
+          }
+        }
+        // Antennae
+        for (const side of [-1, 1]) {
+          addPart(group, geo.slab, toon('#16210f'), [side * 0.12, 0.16, 0.85],
+            [0.04, 0.04, 0.34], [0.3, side * 0.5, 0]);
         }
       },
 
-      banana(group) {
-        // Five shrinking spheres along an arc make a convincing cartoon banana
+      cricket(group) {
+        // Slim body, head end forward
+        addPart(group, geo.segment, toon('#7a9c38'), [0, 0.12, 0], [0.26, 0.26, 0.62]);
+        addPart(group, geo.segment, toon('#5f7c2a'), [0, 0.16, 0.5], [0.22, 0.22, 0.2]);
+        // Folded wings along the back
+        addPart(group, geo.slab, toon('#8fae46'), [0, 0.3, -0.06], [0.34, 0.04, 0.8],
+          [0.08, 0, 0]);
+        /*
+         * The oversized hind leg is the whole silhouette — a thigh angled up
+         * and back, with a thin shin dropping from it.
+         */
+        for (const side of [-1, 1]) {
+          addPart(group, geo.segment, toon('#6d8c32'), [side * 0.3, 0.2, -0.3],
+            [0.12, 0.3, 0.16], [0.5, 0, side * -0.3]);
+          addPart(group, geo.slab, toon('#4d6621'), [side * 0.36, 0.0, -0.58],
+            [0.05, 0.05, 0.5], [-0.7, 0, 0]);
+        }
+        // Front legs
+        for (const side of [-1, 1]) {
+          addPart(group, geo.slab, toon('#4d6621'), [side * 0.24, -0.02, 0.26],
+            [0.04, 0.04, 0.3], [0.4, side * 0.4, 0]);
+        }
+        // Long swept-back antennae
+        for (const side of [-1, 1]) {
+          addPart(group, geo.slab, toon('#3f5419'), [side * 0.1, 0.26, 0.7],
+            [0.03, 0.03, 0.5], [0.25, side * 0.3, 0]);
+        }
+      },
+
+      spider(group) {
+        // Abdomen, then the smaller front body
+        addPart(group, geo.segment, toon('#2f2833'), [0, 0.14, -0.18], [0.42, 0.34, 0.44]);
+        addPart(group, geo.segment, toon('#241e28'), [0, 0.12, 0.26], [0.26, 0.22, 0.24]);
+        // A pale marking, so the abdomen is not a black blob
+        addPart(group, geo.tiny, toon('#b9a88f'), [0, 0.32, -0.22], [0.14, 0.05, 0.2]);
+        /*
+         * Eight legs, four a side, each a thigh angled out and up with a shin
+         * dropping back down — the bend is what makes it read as a spider
+         * rather than an insect.
+         */
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < 4; i += 1) {
+            const spread = 0.6 - i * 0.28;
+            addPart(group, geo.slab, toon('#1a151d'), [side * 0.3, 0.22, spread * 0.5],
+              [0.36, 0.045, 0.045], [0, side * spread * 0.6, side * -0.5]);
+            addPart(group, geo.slab, toon('#1a151d'), [side * 0.56, 0.06, spread * 0.72],
+              [0.05, 0.3, 0.05], [0, 0, side * 0.35]);
+          }
+        }
+      },
+
+      grub(group) {
+        /*
+         * A fat pale larva curled into a C. Seven shrinking spheres along an
+         * arc, with the head at the thick end.
+         */
+        for (let i = 0; i < 7; i += 1) {
+          const t = i / 6;
+          const angle = Math.PI * (0.15 + t * 0.7);
+          const radius = 0.42;
+          const width = 0.34 - t * 0.14;
+          addPart(group, geo.segment, toon(i === 0 ? '#c9a07a' : '#e8dcae'),
+            [Math.cos(angle) * radius, 0.22, Math.sin(angle) * radius - 0.1],
+            [width, width * 0.88, width]);
+        }
+        // Tiny legs near the head
+        for (const side of [-1, 1]) {
+          addPart(group, geo.slab, toon('#c9a07a'),
+            [Math.cos(Math.PI * 0.2) * 0.42 + side * 0.1, 0.06, Math.sin(Math.PI * 0.2) * 0.42 - 0.1],
+            [0.04, 0.12, 0.04]);
+        }
+      },
+
+      frog(group) {
+        // Wide squat body
+        const body = addPart(group, geo.segment, toon('#4d8a3c'), [0, 0.22, 0],
+          [0.5, 0.34, 0.54]);
+        body.rotation.x = -0.12;
+        // Paler throat
+        addPart(group, geo.segment, toon('#c2cf8a'), [0, 0.1, 0.28], [0.32, 0.16, 0.24]);
+        // Darker blotches
+        addPart(group, geo.tiny, toon('#315a26'), [0.2, 0.42, -0.1], [0.18, 0.06, 0.2]);
+        addPart(group, geo.tiny, toon('#315a26'), [-0.22, 0.4, 0.08], [0.16, 0.06, 0.16]);
+        /*
+         * The eyes sit ON TOP of the head, not on the front — that is what
+         * makes a shape read as a frog from above.
+         */
+        for (const side of [-1, 1]) {
+          addPart(group, geo.segment, toon('#d8c96a'), [side * 0.2, 0.46, 0.26], [0.16, 0.16, 0.16]);
+          addPart(group, geo.tiny, basic('#15150f'), [side * 0.21, 0.54, 0.3], [0.09, 0.07, 0.09]);
+        }
+        // Folded back legs either side
+        for (const side of [-1, 1]) {
+          addPart(group, geo.segment, toon('#437a34'), [side * 0.42, 0.16, -0.16],
+            [0.14, 0.14, 0.3], [0, side * 0.4, 0]);
+          addPart(group, geo.slab, toon('#437a34'), [side * 0.44, 0.06, 0.16],
+            [0.1, 0.06, 0.24], [0, side * -0.5, 0]);
+        }
+      },
+
+      mouse(group) {
+        // Rounded body, tapering to a snout
+        addPart(group, geo.segment, toon('#8a7a6a'), [0, 0.24, -0.06], [0.36, 0.32, 0.5]);
+        addPart(group, geo.segment, toon('#948575'), [0, 0.2, 0.34], [0.22, 0.2, 0.26]);
+        addPart(group, geo.segment, toon('#a89a8a'), [0, 0.16, 0.54], [0.12, 0.11, 0.14]);
+        // Paler belly
+        addPart(group, geo.segment, toon('#c6bbae'), [0, 0.1, 0.02], [0.3, 0.14, 0.4]);
+        // The ears are the silhouette — big, round, upright
+        for (const side of [-1, 1]) {
+          addPart(group, geo.plate, toon('#b09a94'), [side * 0.24, 0.5, 0.16],
+            [0.2, 0.04, 0.2], [Math.PI / 2, 0, side * 0.25]);
+        }
+        addPart(group, geo.tiny, basic('#15120f'), [0.12, 0.28, 0.46], [0.07, 0.07, 0.07]);
+        addPart(group, geo.tiny, basic('#15120f'), [-0.12, 0.28, 0.46], [0.07, 0.07, 0.07]);
+        addPart(group, geo.tiny, toon('#d8a6a6'), [0, 0.14, 0.62], [0.05, 0.05, 0.05]);
+        // A long tail, curving away
+        for (let i = 0; i < 5; i += 1) {
+          const t = i / 4;
+          addPart(group, geo.tiny, toon('#9c8c7c'),
+            [Math.sin(t * 2.2) * 0.22, 0.12 + t * 0.04, -0.4 - t * 0.34],
+            [0.06 - t * 0.02, 0.06 - t * 0.02, 0.14]);
+        }
+      },
+
+      lizard(group) {
+        // Elongated body with a wider head
+        addPart(group, geo.segment, toon('#6e8a3f'), [0, 0.16, 0], [0.26, 0.2, 0.46]);
+        addPart(group, geo.segment, toon('#7d9a49'), [0, 0.17, 0.42], [0.24, 0.18, 0.22]);
+        // Darker banding across the back
+        for (let i = 0; i < 3; i += 1) {
+          addPart(group, geo.slab, toon('#4a5f26'), [0, 0.3, 0.18 - i * 0.24],
+            [0.44, 0.03, 0.08]);
+        }
+        // Eyes on the sides of the head
+        for (const side of [-1, 1]) {
+          addPart(group, geo.tiny, basic('#161608'), [side * 0.17, 0.24, 0.5], [0.07, 0.07, 0.07]);
+        }
+        // Four splayed legs with toes
+        for (const side of [-1, 1]) {
+          for (const z of [0.24, -0.16]) {
+            addPart(group, geo.slab, toon('#5d7633'), [side * 0.26, 0.08, z],
+              [0.26, 0.05, 0.05], [0, side * 0.5, 0]);
+            addPart(group, geo.tiny, toon('#5d7633'), [side * 0.4, 0.05, z + side * 0.06],
+              [0.09, 0.03, 0.12]);
+          }
+        }
+        /*
+         * A long tapering tail curving round. It is the silhouette cue, so it
+         * gets real length inside the box.
+         */
         for (let i = 0; i < 6; i += 1) {
           const t = i / 5;
-          const angle = Math.PI * (0.18 + t * 0.64);
-          const radius = 0.62;
-          const taper = 0.3 - Math.abs(t - 0.5) * 0.24;
-          addPart(group, geo.segment, toon('#FFE14D'),
-            [Math.cos(angle) * radius, Math.sin(angle) * radius - 0.3, 0],
-            [taper + 0.1, taper, taper + 0.1]);
-        }
-        addPart(group, geo.cylinder, toon('#6B4A1F'),
-          [Math.cos(Math.PI * 0.18) * 0.62, Math.sin(Math.PI * 0.18) * 0.62 - 0.22, 0],
-          [0.06, 0.2, 0.06], [0, 0, -0.5]);
-      },
-
-      taco(group) {
-        // Half a cylinder on its side is a taco shell
-        const shell = addPart(group, geo.cylinder, toon('#F2B233'), [0, 0.06, 0],
-          [0.78, 0.72, 0.78], [0, 0, Math.PI / 2]);
-        shell.scale.set(0.78, 0.72, 0.78);
-        addPart(group, geo.segment, toon('#7BC043'), [0, 0.2, 0.16], [0.4, 0.2, 0.3]);
-        addPart(group, geo.segment, toon('#E94F37'), [0.1, 0.24, -0.14], [0.22, 0.16, 0.22]);
-        addPart(group, geo.segment, toon('#8B5A2B'), [-0.1, 0.16, -0.02], [0.4, 0.18, 0.3]);
-      },
-
-      fries(group) {
-        addPart(group, geo.cylinder, toon('#E03B3B'), [0, -0.12, 0], [0.5, 0.42, 0.5]);
-        addPart(group, geo.slab, basic('#FFF0E0'), [0, -0.1, 0.26], [0.6, 0.16, 0.02]);
-        const layout = [[-0.16, 0.1, -0.1], [0.05, 0.02, 0.16], [0.16, -0.06, 0.28],
-          [-0.05, 0.14, 0.04], [0.1, -0.16, 0.1]];
-        for (let i = 0; i < layout.length; i += 1) {
-          const [x, z, lean] = layout[i];
-          addPart(group, geo.slab, toon('#FFD470'), [x, 0.3, z], [0.1, 0.62, 0.1],
-            [lean, 0, lean * 0.6]);
+          const width = 0.18 - t * 0.13;
+          addPart(group, geo.segment, toon('#6e8a3f'),
+            [Math.sin(t * 2.6) * 0.26, 0.14, -0.34 - t * 0.4],
+            [width, width * 0.8, 0.2]);
         }
       },
 
-      apple(group) {
-        const body = addPart(group, geo.segment, toon('#E93B4E'), [0, 0, 0], [0.76, 0.8, 0.76]);
-        body.scale.set(0.78, 0.82, 0.78);
-        addPart(group, geo.cylinder, toon('#6B4A1F'), [0, 0.44, 0], [0.05, 0.3, 0.05],
-          [0, 0, 0.18]);
-        addPart(group, geo.segment, toon('#5BB03A'), [0.18, 0.5, 0], [0.22, 0.05, 0.12],
-          [0, 0, 0.4]);
-      },
-
-      cake(group) {
-        addPart(group, geo.wedge, toon('#E8B873'), [0, -0.16, 0], [0.8, 0.2, 0.8]);
-        addPart(group, geo.wedge, toon('#FFF2E0'), [0, -0.04, 0], [0.81, 0.06, 0.81]);
-        addPart(group, geo.wedge, toon('#F2C98A'), [0, 0.08, 0], [0.8, 0.2, 0.8]);
-        addPart(group, geo.wedge, toon('#FF7FB0'), [0, 0.22, 0], [0.82, 0.08, 0.82]);
-        addPart(group, geo.segment, toon('#E02040'), [0.1, 0.34, 0.1], [0.16, 0.16, 0.16]);
+      egg(group) {
+        /*
+         * The calmest item in the set, and deliberately so: when four other
+         * things on screen have legs, one plain shape is a relief to read.
+         */
+        const egg = addPart(group, geo.segment, toon('#e8e2cc'), [0, 0.42, 0],
+          [0.34, 0.44, 0.34]);
+        egg.rotation.z = 0.12;
+        // Brown speckles
+        const speckles = [[0.14, 0.52, 0.16], [-0.12, 0.6, 0.1], [0.08, 0.34, -0.18],
+          [-0.16, 0.42, -0.08], [0.02, 0.68, -0.06]];
+        for (const [x, y, z] of speckles) {
+          addPart(group, geo.tiny, toon('#9c7a4a'), [x, y, z], [0.07, 0.07, 0.07]);
+        }
+        // A few crossed twigs beneath, not a full basket
+        for (let i = 0; i < 5; i += 1) {
+          const angle = (i / 5) * Math.PI;
+          addPart(group, geo.slab, toon('#6b5433'), [0, 0.08, 0],
+            [0.9, 0.05, 0.06], [0, angle, 0.04]);
+        }
       },
     };
 
@@ -1271,6 +1434,7 @@
         if (tilesLight) tilesLight.dispose();
         if (tilesDark) tilesDark.dispose();
         if (jungle) jungle.dispose();
+        if (environmentMap) environmentMap.dispose();
         ghostMaterial.dispose();
         particleGeometry.dispose();
         particleMaterial.dispose();

@@ -31,14 +31,17 @@
       emoji: '🌿',
       world: 'jungle',
       ink: '#10180b',
-      body: '#5f7a34',
-      bodyDark: '#2f3d18',
-      bodyLight: '#8fa855',
-      belly: '#c9c08a',
+      // A jungle snake is camouflaged by design, which is exactly wrong for
+      // a game. This is a green tree python rather than a leaf litter viper:
+      // 6.6:1 against the clearing floor instead of the 3.1:1 it started at.
+      body: '#9ccc51',
+      bodyDark: '#3f5a1e',
+      bodyLight: '#c8e88a',
+      belly: '#e6dfae',
       cheek: '#7a8f45',
       tongue: '#8e2b3a',
-      board1: '#2e2415',
-      board2: '#1b2b14',
+      board1: '#3d3320',
+      board2: '#26301a',
       tile: 'rgba(120, 150, 80, 0.05)',
       accent: '#c8a94a',
       accent2: '#7fa64b',

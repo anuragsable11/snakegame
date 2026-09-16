@@ -46,7 +46,9 @@
     const c = canvas.getContext('2d');
     const random = seeded(20260916);
 
-    c.fillStyle = '#2e2415';
+    // The playfield is a clearing: lighter than the jungle around it, so the
+    // board reads as a distinct surface rather than blending into the scenery.
+    c.fillStyle = '#3d3320';
     c.fillRect(0, 0, size, size);
 
     // Damp earth mottling
@@ -249,9 +251,27 @@
    * @returns {{dispose: function, setPalette: function, update: function}}
    */
   NS.buildJungleWorld = function buildJungleWorld(THREE, options) {
-    const { scene, arena, grid, palette, shadows, worldX, worldZ } = options;
+    const { scene, arena, grid, palette, shadows, camera } = options;
     const span = grid;
     const random = seeded(51423);
+
+    /*
+     * Nothing may stand between the camera and the board.
+     *
+     * The camera sits out at +z looking back at the origin, so a ring of
+     * trees puts a third of them directly in front of the lens. Scenery is
+     * therefore only placed behind and beside the arena. You never see the
+     * near side anyway — the camera is standing in it.
+     */
+    const camZ = camera ? camera.z : grid * 1.32;
+    const NEAR_LIMIT = span * 0.22;
+
+    function blocksTheView(x, z, height) {
+      if (z < NEAR_LIMIT) return false;        // behind or beside the board
+      if (z > camZ + 6) return false;          // behind the camera
+      const spread = 10 + height * 0.9;        // wider things block from further out
+      return Math.abs(x) < spread;
+    }
 
     const textures = [];
     const geometries = [];
@@ -367,19 +387,22 @@
     arena.add(canopies);
 
     let canopyAt = 0;
+    let treeAt = 0;
     for (let i = 0; i < TREES; i += 1) {
-      // Ringed around the arena, never on it
+      // Ringed around the arena, never on it and never in front of it
       const angle = (i / TREES) * Math.PI * 2 + random() * 0.18;
       const distance = span * (0.78 + random() * 0.55);
       const x = Math.cos(angle) * distance;
       const z = Math.sin(angle) * distance;
       const height = 9 + random() * 11;
+      if (blocksTheView(x, z, height)) continue;
 
       dummy.position.set(x, height / 2, z);
       dummy.rotation.set(0, random() * Math.PI, (random() - 0.5) * 0.06);
       dummy.scale.set(1, height, 1);
       dummy.updateMatrix();
-      trunks.setMatrixAt(i, dummy.matrix);
+      trunks.setMatrixAt(treeAt, dummy.matrix);
+      treeAt += 1;
 
       for (let b = 0; b < 3; b += 1) {
         const blobSize = 2.6 + random() * 2.4;
@@ -395,6 +418,8 @@
         canopyAt += 1;
       }
     }
+    trunks.count = treeAt;
+    canopies.count = canopyAt;
     trunks.instanceMatrix.needsUpdate = true;
     canopies.instanceMatrix.needsUpdate = true;
 
@@ -423,6 +448,7 @@
       const x = Math.cos(angle) * distance;
       const z = Math.sin(angle) * distance;
       const size = 1.6 + random() * 2.2;
+      if (blocksTheView(x, z, size)) continue;
       // Two crossed planes so a frond reads from any angle
       for (let k = 0; k < 2; k += 1) {
         dummy.position.set(x, size / 2, z);
@@ -433,6 +459,7 @@
         fernAt += 1;
       }
     }
+    ferns.count = fernAt;
     ferns.instanceMatrix.needsUpdate = true;
 
     /* ------------------------------ rocks -------------------------------- */
@@ -449,22 +476,33 @@
     rocks.castShadow = shadows;
     rocks.receiveShadow = shadows;
     arena.add(rocks);
+    let rockAt = 0;
     for (let i = 0; i < ROCKS; i += 1) {
       const angle = random() * Math.PI * 2;
       const distance = span * (0.62 + random() * 0.8);
       const size = 0.5 + random() * 1.5;
-      dummy.position.set(Math.cos(angle) * distance, size * 0.35, Math.sin(angle) * distance);
+      const rx = Math.cos(angle) * distance;
+      const rz = Math.sin(angle) * distance;
+      if (blocksTheView(rx, rz, size)) continue;
+      dummy.position.set(rx, size * 0.35, rz);
       dummy.rotation.set(random() * 3, random() * 3, random() * 3);
       dummy.scale.set(size, size * 0.7, size);
       dummy.updateMatrix();
-      rocks.setMatrixAt(i, dummy.matrix);
+      rocks.setMatrixAt(rockAt, dummy.matrix);
+      rockAt += 1;
     }
+    rocks.count = rockAt;
     rocks.instanceMatrix.needsUpdate = true;
 
     /* --------------------------- atmosphere ------------------------------ */
 
-    scene.background = new THREE.Color('#16240f');
-    scene.fog = new THREE.FogExp2(0x1b2b14, 0.019);
+    scene.background = new THREE.Color('#1b2a12');
+    /*
+     * Linear fog, starting past the far edge of the board. Exponential fog
+     * washed out 22% of the playfield at the centre and 35% at the back;
+     * this leaves the board completely clear and only fades the treeline.
+     */
+    scene.fog = new THREE.Fog(new THREE.Color('#2a3d1c'), grid * 1.9, grid * 4.2);
 
     return {
       /** The snake skin, so the renderer can dress the body with it. */

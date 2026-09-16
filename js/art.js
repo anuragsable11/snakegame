@@ -57,485 +57,526 @@
   }
 
   /* ====================================================================== *
-   * FOOD — eight snacks, each readable at 34px
+   * PREY — eight creatures, each readable at 34px
+   *
+   * Silhouette does all the work at this size, so every creature leans on one
+   * unmistakable cue: the beetle's split shell, the cricket's hind leg, the
+   * spider's leg spread, the frog's eyes-on-top, the mouse's ears, the
+   * lizard's tail. Natural colours, but the dark outline stays — it is what
+   * keeps a small shape legible against a busy forest floor.
    * ====================================================================== */
 
-  function drawPizza(ctx, s, t, p) {
+  function drawBeetle(ctx, s, t, p) {
     const k = s * 0.5;
-    const wobble = Math.sin(t / 260) * s * 0.012;
+    const twitch = Math.sin(t / 240) * 0.18;
 
-    softShadow(ctx, s, () => {
-      ctx.beginPath();
-      ctx.moveTo(0, -k * 0.86);
-      ctx.lineTo(k * 0.76, k * 0.7);
-      ctx.lineTo(-k * 0.76, k * 0.7);
-      ctx.closePath();
-    });
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.1, k * 0.52, k * 0.66));
 
-    // Slice body
-    ctx.beginPath();
-    ctx.moveTo(0, -k * 0.86);
-    ctx.lineTo(k * 0.76, k * 0.66);
-    ctx.quadraticCurveTo(0, k * 0.88, -k * 0.76, k * 0.66);
-    ctx.closePath();
-    ctx.fillStyle = '#FFC55C';
-    ctx.fill();
-
-    // Crust along the wide end
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.76, k * 0.66);
-    ctx.quadraticCurveTo(0, k * 0.88, k * 0.76, k * 0.66);
-    ctx.quadraticCurveTo(0, k * 1.14, -k * 0.76, k * 0.66);
-    ctx.closePath();
-    ctx.fillStyle = '#E0952F';
-    ctx.fill();
-    outline(ctx, s, p, 0.8);
-    ctx.stroke();
-
-    // Pepperoni
-    ctx.fillStyle = '#E23B3B';
-    const spots = [[-0.2, 0.1, 0.15], [0.22, 0.26, 0.13], [0.02, -0.28, 0.11]];
-    for (const [px, py, pr] of spots) {
-      ctx.beginPath();
-      ctx.arc(px * s, py * s + wobble, pr * s, 0, TAU);
-      ctx.fill();
-    }
-
-    // One heroic strand of cheese escaping the side
-    ctx.beginPath();
-    ctx.moveTo(k * 0.58, k * 0.34);
-    ctx.quadraticCurveTo(k * 0.94, k * 0.5 + wobble * 3, k * 0.78, k * 0.92 + wobble * 4);
-    ctx.strokeStyle = '#FFE08A';
-    ctx.lineWidth = s * 0.09;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    // Outline last so it reads
-    ctx.beginPath();
-    ctx.moveTo(0, -k * 0.86);
-    ctx.lineTo(k * 0.76, k * 0.66);
-    ctx.quadraticCurveTo(0, k * 0.88, -k * 0.76, k * 0.66);
-    ctx.closePath();
-    outline(ctx, s, p);
-    ctx.stroke();
-  }
-
-  function drawBurger(ctx, s, t, p) {
-    const k = s * 0.5;
-    const bounce = Math.sin(t / 220) * s * 0.02;
-
-    softShadow(ctx, s, () => blob(ctx, 0, k * 0.5, k * 0.8, k * 0.3));
-
-    // Bottom bun
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.78, k * 0.28);
-    ctx.lineTo(k * 0.78, k * 0.28);
-    ctx.quadraticCurveTo(k * 0.86, k * 0.72, 0, k * 0.72);
-    ctx.quadraticCurveTo(-k * 0.86, k * 0.72, -k * 0.78, k * 0.28);
-    ctx.closePath();
-    ctx.fillStyle = '#E3A45C';
-    ctx.fill();
-    outline(ctx, s, p, 0.8);
-    ctx.stroke();
-
-    // Patty
-    roundRect(ctx, -k * 0.82, k * 0.02, k * 1.64, k * 0.3, k * 0.14);
-    ctx.fillStyle = '#7B4326';
-    ctx.fill();
-    outline(ctx, s, p, 0.8);
-    ctx.stroke();
-
-    // Cheese, drooping a little on one side
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.8, k * 0.02);
-    ctx.lineTo(k * 0.8, k * 0.02);
-    ctx.lineTo(k * 0.62, k * 0.24);
-    ctx.lineTo(k * 0.3, k * 0.04);
-    ctx.lineTo(-k * 0.1, k * 0.26);
-    ctx.lineTo(-k * 0.5, k * 0.04);
-    ctx.lineTo(-k * 0.8, k * 0.2);
-    ctx.closePath();
-    ctx.fillStyle = '#FFC21F';
-    ctx.fill();
-    outline(ctx, s, p, 0.7);
-    ctx.stroke();
-
-    // Lettuce frill
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.84, -k * 0.16);
-    for (let i = 0; i <= 6; i += 1) {
-      const x = -k * 0.84 + (k * 1.68 * i) / 6;
-      ctx.quadraticCurveTo(x, -k * 0.02, x + k * 0.14, -k * 0.16);
-    }
-    ctx.lineTo(k * 0.8, -k * 0.2);
-    ctx.lineTo(-k * 0.84, -k * 0.2);
-    ctx.closePath();
-    ctx.fillStyle = '#6BBF3A';
-    ctx.fill();
-    outline(ctx, s, p, 0.7);
-    ctx.stroke();
-
-    // Top bun, slightly askew because it is a cartoon
-    ctx.save();
-    ctx.translate(k * 0.04, -k * 0.2 + bounce);
-    ctx.rotate(0.07);
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.82, 0);
-    ctx.quadraticCurveTo(-k * 0.76, -k * 0.74, 0, -k * 0.74);
-    ctx.quadraticCurveTo(k * 0.76, -k * 0.74, k * 0.82, 0);
-    ctx.closePath();
-    ctx.fillStyle = '#F0B462';
-    ctx.fill();
-    outline(ctx, s, p, 0.8);
-    ctx.stroke();
-    ctx.fillStyle = '#FFF0D0';
-    for (const [sx, sy] of [[-0.3, -0.36], [0.06, -0.48], [0.38, -0.3]]) {
-      blob(ctx, sx * s, sy * s, s * 0.045, s * 0.028);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawDonut(ctx, s, t, p) {
-    const k = s * 0.5;
-    const shimmer = Math.sin(t / 300);
-
-    softShadow(ctx, s, () => blob(ctx, 0, k * 0.1, k * 0.78, k * 0.74));
-
-    // Dough
-    ctx.beginPath();
-    ctx.arc(0, 0, k * 0.8, 0, TAU);
-    ctx.fillStyle = '#E8A85C';
-    ctx.fill();
-    outline(ctx, s, p);
-    ctx.stroke();
-
-    // Glaze with a wobbly lower edge
-    ctx.beginPath();
-    ctx.arc(0, -k * 0.06, k * 0.74, Math.PI * 0.05, Math.PI * 0.95, true);
-    ctx.quadraticCurveTo(k * 0.34, k * 0.42, k * 0.06, k * 0.6);
-    ctx.quadraticCurveTo(-k * 0.3, k * 0.4, -k * 0.7, k * 0.3);
-    ctx.closePath();
-    ctx.fillStyle = '#FF8FC5';
-    ctx.fill();
-    outline(ctx, s, p, 0.65);
-    ctx.stroke();
-
-    // Sprinkles
-    const sprinkles = [
-      [-0.3, -0.24, 0.6, '#5BD1C4'], [0.04, -0.34, -0.4, '#FFE08A'],
-      [0.3, -0.16, 1.1, '#7CFF8E'], [-0.16, 0.16, 0.2, '#FFFFFF'],
-      [0.24, 0.16, -0.9, '#FFC21F'], [-0.36, 0.02, 1.4, '#FF6B6B'],
-    ];
-    ctx.lineCap = 'round';
+    // Legs first, so the shell sits over them
+    ctx.strokeStyle = '#1b2612';
     ctx.lineWidth = s * 0.05;
-    for (const [sx, sy, rot, colour] of sprinkles) {
-      ctx.save();
-      ctx.translate(sx * s, sy * s);
-      ctx.rotate(rot + shimmer * 0.08);
-      ctx.strokeStyle = colour;
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.04, 0);
-      ctx.lineTo(s * 0.04, 0);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Hole
-    ctx.beginPath();
-    ctx.arc(0, 0, k * 0.26, 0, TAU);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fill();
-    outline(ctx, s, p, 0.7);
-    ctx.stroke();
-  }
-
-  function drawBanana(ctx, s, t, p) {
-    const k = s * 0.5;
-    const sway = Math.sin(t / 340) * 0.05;
-
-    ctx.save();
-    ctx.rotate(-0.35 + sway);
-
-    softShadow(ctx, s, () => {
-      ctx.beginPath();
-      ctx.moveTo(-k * 0.7, -k * 0.3);
-      ctx.quadraticCurveTo(0, k * 0.9, k * 0.72, -k * 0.2);
-      ctx.quadraticCurveTo(0, k * 0.5, -k * 0.7, -k * 0.3);
-      ctx.closePath();
-    });
-
-    // Body
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.7, -k * 0.32);
-    ctx.quadraticCurveTo(0, k * 0.86, k * 0.72, -k * 0.22);
-    ctx.quadraticCurveTo(0, k * 0.46, -k * 0.7, -k * 0.32);
-    ctx.closePath();
-    ctx.fillStyle = '#FFE14D';
-    ctx.fill();
-    outline(ctx, s, p);
-    ctx.stroke();
-
-    // Inner highlight
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.5, -k * 0.24);
-    ctx.quadraticCurveTo(0, k * 0.5, k * 0.5, -k * 0.2);
-    ctx.strokeStyle = '#FFF3A8';
-    ctx.lineWidth = s * 0.05;
-    ctx.stroke();
-
-    // Peel flaps at the top, flopping with t
-    ctx.fillStyle = '#E8C63A';
+    ctx.lineCap = 'round';
     for (const side of [-1, 1]) {
-      ctx.save();
-      ctx.translate(-k * 0.66, -k * 0.3);
-      ctx.rotate(side * (0.5 + sway * 2));
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(k * 0.16, k * 0.3, -k * 0.06, k * 0.52);
-      ctx.quadraticCurveTo(-k * 0.2, k * 0.26, 0, 0);
-      ctx.closePath();
-      ctx.fill();
-      outline(ctx, s, p, 0.65);
-      ctx.stroke();
-      ctx.restore();
+      for (let i = 0; i < 3; i += 1) {
+        const y = -k * 0.3 + i * k * 0.34;
+        ctx.beginPath();
+        ctx.moveTo(side * k * 0.34, y);
+        ctx.lineTo(side * k * 0.72, y + (i - 1) * k * 0.16);
+        ctx.stroke();
+      }
     }
 
-    // Stem
+    // Head and thorax
     ctx.beginPath();
-    ctx.moveTo(-k * 0.68, -k * 0.34);
-    ctx.lineTo(-k * 0.78, -k * 0.62);
-    ctx.strokeStyle = '#6B4A1F';
-    ctx.lineWidth = s * 0.08;
+    ctx.ellipse(0, -k * 0.66, k * 0.2, k * 0.16, 0, 0, TAU);
+    ctx.fillStyle = '#1d2d19';
+    ctx.fill();
+    outline(ctx, s, p, 0.6);
     ctx.stroke();
 
-    ctx.restore();
+    // Antennae
+    ctx.strokeStyle = '#1b2612';
+    ctx.lineWidth = s * 0.04;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(side * k * 0.1, -k * 0.74);
+      ctx.quadraticCurveTo(side * k * 0.3, -k * 0.98,
+        side * (k * 0.42 + twitch * k), -k * 1.02);
+      ctx.stroke();
+    }
+
+    // Domed shell
+    ctx.beginPath();
+    ctx.ellipse(0, k * 0.06, k * 0.54, k * 0.7, 0, 0, TAU);
+    ctx.fillStyle = '#33502c';
+    ctx.fill();
+
+    // A sheen down one side, so it reads as domed rather than flat
+    ctx.beginPath();
+    ctx.ellipse(-k * 0.22, -k * 0.06, k * 0.16, k * 0.4, -0.2, 0, TAU);
+    ctx.fillStyle = 'rgba(180, 220, 150, 0.22)';
+    ctx.fill();
+
+    // The seam — the silhouette cue
+    ctx.beginPath();
+    ctx.moveTo(0, -k * 0.56);
+    ctx.lineTo(0, k * 0.72);
+    ctx.strokeStyle = '#16210f';
+    ctx.lineWidth = s * 0.055;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(0, k * 0.06, k * 0.54, k * 0.7, 0, 0, TAU);
+    outline(ctx, s, p);
+    ctx.stroke();
   }
 
-  function drawTaco(ctx, s, t, p) {
+  function drawCricket(ctx, s, t, p) {
     const k = s * 0.5;
-    const jiggle = Math.sin(t / 200) * s * 0.014;
+    const flex = Math.sin(t / 200) * 0.14;
 
-    softShadow(ctx, s, () => {
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.4, k * 0.5, k * 0.2));
+
+    // Antennae, swept back
+    ctx.strokeStyle = '#3f5419';
+    ctx.lineWidth = s * 0.04;
+    ctx.lineCap = 'round';
+    for (const offset of [-0.08, 0.02]) {
       ctx.beginPath();
-      ctx.arc(0, k * 0.1, k * 0.78, 0, Math.PI);
-      ctx.closePath();
-    });
+      ctx.moveTo(k * 0.44, -k * 0.2 + offset * k);
+      ctx.quadraticCurveTo(k * 0.9, -k * 0.5, k * 1.0, -k * 0.06);
+      ctx.stroke();
+    }
 
-    // Filling first, so the shell can sit in front of it
-    ctx.fillStyle = '#7BC043';
+    /*
+     * The oversized hind leg is the whole silhouette: a thick thigh angled up
+     * and back, with a thin shin dropping from it.
+     */
     ctx.beginPath();
-    ctx.ellipse(-k * 0.22, -k * 0.16 + jiggle, k * 0.3, k * 0.2, -0.3, 0, TAU);
+    ctx.moveTo(-k * 0.1, k * 0.04);
+    ctx.quadraticCurveTo(-k * 0.62, -k * 0.5 - flex * k, -k * 0.5, k * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = '#6d8c32';
     ctx.fill();
-    ctx.fillStyle = '#E94F37';
-    ctx.beginPath();
-    ctx.ellipse(k * 0.2, -k * 0.22 - jiggle, k * 0.24, k * 0.18, 0.4, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#8B5A2B';
-    ctx.beginPath();
-    ctx.ellipse(0, -k * 0.04, k * 0.46, k * 0.2, 0, 0, TAU);
-    ctx.fill();
-    outline(ctx, s, p, 0.55);
+    outline(ctx, s, p, 0.7);
     ctx.stroke();
 
-    // One bit of filling making a break for it
-    ctx.fillStyle = '#7BC043';
     ctx.beginPath();
-    ctx.ellipse(k * 0.48, -k * 0.42 - jiggle * 2, k * 0.12, k * 0.08, 0.7, 0, TAU);
+    ctx.moveTo(-k * 0.5, k * 0.08);
+    ctx.lineTo(-k * 0.76, k * 0.66 + flex * k * 0.4);
+    ctx.strokeStyle = '#4d6621';
+    ctx.lineWidth = s * 0.05;
+    ctx.stroke();
+
+    // Front legs
+    for (const x of [k * 0.1, k * 0.32]) {
+      ctx.beginPath();
+      ctx.moveTo(x, k * 0.12);
+      ctx.lineTo(x + k * 0.16, k * 0.6);
+      ctx.stroke();
+    }
+
+    // Body, head end to the right
+    ctx.beginPath();
+    ctx.ellipse(0, -k * 0.04, k * 0.54, k * 0.24, -0.1, 0, TAU);
+    ctx.fillStyle = '#7a9c38';
+    ctx.fill();
+    outline(ctx, s, p, 0.85);
+    ctx.stroke();
+
+    // Folded wing along the back
+    ctx.beginPath();
+    ctx.ellipse(-k * 0.06, -k * 0.16, k * 0.44, k * 0.12, -0.12, 0, TAU);
+    ctx.fillStyle = '#8fae46';
     ctx.fill();
     outline(ctx, s, p, 0.5);
     ctx.stroke();
 
-    // Shell
+    // Head
     ctx.beginPath();
-    ctx.moveTo(-k * 0.82, -k * 0.1);
-    ctx.arc(0, -k * 0.1, k * 0.82, Math.PI, 0, true);
-    ctx.closePath();
-    ctx.fillStyle = '#F2B233';
+    ctx.ellipse(k * 0.48, -k * 0.1, k * 0.2, k * 0.2, 0, 0, TAU);
+    ctx.fillStyle = '#5f7c2a';
+    ctx.fill();
+    outline(ctx, s, p, 0.7);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(k * 0.56, -k * 0.16, k * 0.06, 0, TAU);
+    ctx.fillStyle = '#15150f';
+    ctx.fill();
+  }
+
+  function drawSpider(ctx, s, t, p) {
+    const k = s * 0.5;
+    const creep = Math.sin(t / 260) * 0.08;
+
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.12, k * 0.44, k * 0.4));
+
+    /*
+     * Eight legs, four a side, each bent at a knee. The spread IS the
+     * silhouette, so they are drawn bold and wide.
+     */
+    ctx.strokeStyle = '#1a151d';
+    ctx.lineWidth = s * 0.055;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i += 1) {
+        const spread = 0.62 - i * 0.3;
+        const lean = (i % 2 === 0 ? creep : -creep);
+        ctx.beginPath();
+        ctx.moveTo(side * k * 0.16, spread * k * 0.34);
+        ctx.lineTo(side * k * 0.66, spread * k * 0.6 - k * 0.22 + lean * k);
+        ctx.lineTo(side * k * 0.88, spread * k * 0.5 + k * 0.32 + lean * k);
+        ctx.stroke();
+      }
+    }
+
+    // Abdomen and front body
+    ctx.beginPath();
+    ctx.ellipse(0, k * 0.2, k * 0.4, k * 0.44, 0, 0, TAU);
+    ctx.fillStyle = '#2f2833';
     ctx.fill();
     outline(ctx, s, p);
     ctx.stroke();
 
-    // Shell shading
+    // A pale marking, so it is not a black blob
     ctx.beginPath();
-    ctx.arc(0, -k * 0.1, k * 0.58, Math.PI * 0.12, Math.PI * 0.88);
-    ctx.strokeStyle = '#D9952A';
-    ctx.lineWidth = s * 0.055;
+    ctx.ellipse(0, k * 0.16, k * 0.12, k * 0.22, 0, 0, TAU);
+    ctx.fillStyle = '#b9a88f';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(0, -k * 0.32, k * 0.24, k * 0.22, 0, 0, TAU);
+    ctx.fillStyle = '#241e28';
+    ctx.fill();
+    outline(ctx, s, p, 0.7);
     ctx.stroke();
+
+    // Two tiny eye clusters
+    ctx.fillStyle = '#d8d0c0';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * k * 0.09, -k * 0.42, k * 0.05, 0, TAU);
+      ctx.fill();
+    }
   }
 
-  function drawFries(ctx, s, t, p) {
+  function drawGrub(ctx, s, t, p) {
     const k = s * 0.5;
-    const flop = Math.sin(t / 240) * 0.12;
+    const curl = Math.sin(t / 300) * 0.1;
 
-    softShadow(ctx, s, () => roundRect(ctx, -k * 0.6, k * 0.02, k * 1.2, k * 0.8, k * 0.12));
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.16, k * 0.5, k * 0.44));
 
-    // The fries themselves, fanned out
-    const fries = [[-0.34, -0.9, -0.22], [-0.12, -1.02, -0.06], [0.1, -0.96, 0.08],
-      [0.3, -0.84, 0.24], [0.02, -0.78, 0.0]];
-    ctx.fillStyle = '#FFD470';
-    for (let i = 0; i < fries.length; i += 1) {
-      const [fx, fy, rot] = fries[i];
-      ctx.save();
-      ctx.translate(fx * s, k * 0.1);
-      ctx.rotate(rot + (i === 4 ? flop : flop * 0.2));
-      roundRect(ctx, -s * 0.045, fy * k, s * 0.09, Math.abs(fy) * k + k * 0.2, s * 0.03);
+    /*
+     * A fat pale larva curled into a C: seven shrinking discs along an arc,
+     * with creases between them.
+     */
+    const segments = 7;
+    for (let i = 0; i < segments; i += 1) {
+      const u = i / (segments - 1);
+      const angle = Math.PI * (0.25 + u * (0.85 + curl));
+      const radius = k * 0.46;
+      const width = k * (0.3 - u * 0.11);
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius - k * 0.05;
+
+      ctx.beginPath();
+      ctx.arc(x, y, width, 0, TAU);
+      ctx.fillStyle = i === 0 ? '#c9a07a' : '#e8dcae';
       ctx.fill();
       outline(ctx, s, p, 0.55);
       ctx.stroke();
-      ctx.restore();
+
+      // A faint crease, so the segments read as segments
+      if (i > 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, width * 0.82, angle - 1.9, angle - 0.6);
+        ctx.strokeStyle = 'rgba(160, 130, 90, 0.5)';
+        ctx.lineWidth = s * 0.025;
+        ctx.stroke();
+      }
     }
 
-    // One fry flopping over the edge
-    ctx.save();
-    ctx.translate(k * 0.52, k * 0.06);
-    ctx.rotate(1.25 + flop);
-    roundRect(ctx, -s * 0.045, -k * 0.5, s * 0.09, k * 0.62, s * 0.03);
-    ctx.fill();
-    outline(ctx, s, p, 0.55);
-    ctx.stroke();
-    ctx.restore();
-
-    // Carton
+    // Head detail at the thick end
+    const headAngle = Math.PI * 0.25;
+    const hx = Math.cos(headAngle) * k * 0.46;
+    const hy = Math.sin(headAngle) * k * 0.46 - k * 0.05;
     ctx.beginPath();
-    ctx.moveTo(-k * 0.62, k * 0.02);
-    ctx.lineTo(k * 0.62, k * 0.02);
-    ctx.lineTo(k * 0.46, k * 0.86);
-    ctx.lineTo(-k * 0.46, k * 0.86);
-    ctx.closePath();
-    ctx.fillStyle = '#E03B3B';
+    ctx.arc(hx, hy, k * 0.07, 0, TAU);
+    ctx.fillStyle = '#6b4a2a';
     ctx.fill();
-    outline(ctx, s, p);
-    ctx.stroke();
-
-    // Carton stripe
-    ctx.beginPath();
-    ctx.moveTo(-k * 0.55, k * 0.3);
-    ctx.lineTo(k * 0.55, k * 0.3);
-    ctx.strokeStyle = '#FFF0E0';
-    ctx.lineWidth = s * 0.07;
-    ctx.stroke();
   }
 
-  function drawApple(ctx, s, t, p) {
+  function drawFrog(ctx, s, t, p) {
     const k = s * 0.5;
-    const breathe = 1 + Math.sin(t / 380) * 0.02;
+    const throat = (Math.sin(t / 260) * 0.5 + 0.5) * 0.12;
 
-    softShadow(ctx, s, () => blob(ctx, 0, k * 0.2, k * 0.7, k * 0.62));
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.2, k * 0.6, k * 0.44));
 
-    ctx.save();
-    ctx.scale(breathe, 1 / breathe);
+    // Folded back legs, either side
+    ctx.fillStyle = '#437a34';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(side * k * 0.6, k * 0.18, k * 0.2, k * 0.34, side * 0.4, 0, TAU);
+      ctx.fill();
+      outline(ctx, s, p, 0.6);
+      ctx.stroke();
+    }
 
-    // Two lobes make it read as an apple rather than a ball
+    // Front feet
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(side * k * 0.34, k * 0.6, k * 0.14, k * 0.09, side * 0.3, 0, TAU);
+      ctx.fillStyle = '#4d8a3c';
+      ctx.fill();
+      outline(ctx, s, p, 0.5);
+      ctx.stroke();
+    }
+
+    // Wide squat body
     ctx.beginPath();
-    ctx.moveTo(0, -k * 0.5);
-    ctx.bezierCurveTo(-k * 0.9, -k * 0.7, -k * 0.95, k * 0.62, 0, k * 0.78);
-    ctx.bezierCurveTo(k * 0.95, k * 0.62, k * 0.9, -k * 0.7, 0, -k * 0.5);
-    ctx.closePath();
-    ctx.fillStyle = '#E93B4E';
+    ctx.ellipse(0, k * 0.1, k * 0.56, k * 0.5, 0, 0, TAU);
+    ctx.fillStyle = '#4d8a3c';
     ctx.fill();
     outline(ctx, s, p);
     ctx.stroke();
 
-    // Gloss
+    // Darker mottling
+    ctx.fillStyle = '#315a26';
     ctx.beginPath();
-    ctx.ellipse(-k * 0.3, -k * 0.2, k * 0.16, k * 0.26, -0.5, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.ellipse(k * 0.2, 0, k * 0.16, k * 0.11, 0.4, 0, TAU);
     ctx.fill();
-    ctx.restore();
-
-    // Stem
     ctx.beginPath();
-    ctx.moveTo(0, -k * 0.5);
-    ctx.quadraticCurveTo(k * 0.1, -k * 0.82, k * 0.02, -k * 0.94);
-    ctx.strokeStyle = '#6B4A1F';
-    ctx.lineWidth = s * 0.075;
+    ctx.ellipse(-k * 0.24, k * 0.2, k * 0.13, k * 0.1, -0.3, 0, TAU);
+    ctx.fill();
+
+    // Pulsing throat — the one piece of life
+    ctx.beginPath();
+    ctx.ellipse(0, k * 0.42, k * 0.26, k * (0.12 + throat), 0, 0, TAU);
+    ctx.fillStyle = '#c2cf8a';
+    ctx.fill();
+
+    /*
+     * The eyes sit ON TOP of the head, not on the front. That is what makes a
+     * green blob read as a frog when seen from above.
+     */
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * k * 0.28, -k * 0.38, k * 0.19, 0, TAU);
+      ctx.fillStyle = '#d8c96a';
+      ctx.fill();
+      outline(ctx, s, p, 0.65);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(side * k * 0.3, -k * 0.38, k * 0.08, k * 0.11, 0, 0, TAU);
+      ctx.fillStyle = '#15150f';
+      ctx.fill();
+    }
+  }
+
+  function drawMouse(ctx, s, t, p) {
+    const k = s * 0.5;
+    const flick = Math.sin(t / 280) * 0.16;
+
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.34, k * 0.5, k * 0.24));
+
+    // Tail, curling away behind
+    ctx.beginPath();
+    ctx.moveTo(-k * 0.42, k * 0.16);
+    ctx.quadraticCurveTo(-k * 0.92, k * 0.3 + flick * k, -k * 0.74, -k * 0.34 + flick * k);
+    ctx.strokeStyle = '#9c8c7c';
+    ctx.lineWidth = s * 0.05;
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Leaf
-    ctx.save();
-    ctx.translate(k * 0.12, -k * 0.82);
-    ctx.rotate(-0.5 + Math.sin(t / 300) * 0.12);
+    // The ears are the silhouette cue — big and round
+    for (const [ex, ey, er] of [[-k * 0.04, -k * 0.42, k * 0.22], [k * 0.3, -k * 0.34, k * 0.19]]) {
+      ctx.beginPath();
+      ctx.arc(ex, ey, er, 0, TAU);
+      ctx.fillStyle = '#b09a94';
+      ctx.fill();
+      outline(ctx, s, p, 0.7);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(ex, ey, er * 0.5, 0, TAU);
+      ctx.fillStyle = '#d8a6a6';
+      ctx.fill();
+    }
+
+    // Body tapering into a snout
     ctx.beginPath();
-    ctx.ellipse(k * 0.22, 0, k * 0.26, k * 0.13, 0, 0, TAU);
-    ctx.fillStyle = '#5BB03A';
+    ctx.moveTo(-k * 0.44, k * 0.1);
+    ctx.quadraticCurveTo(-k * 0.3, -k * 0.34, k * 0.16, -k * 0.24);
+    ctx.quadraticCurveTo(k * 0.72, -k * 0.16, k * 0.78, k * 0.16);
+    ctx.quadraticCurveTo(k * 0.4, k * 0.5, -k * 0.16, k * 0.44);
+    ctx.closePath();
+    ctx.fillStyle = '#8a7a6a';
     ctx.fill();
-    outline(ctx, s, p, 0.6);
+    outline(ctx, s, p);
     ctx.stroke();
-    ctx.restore();
+
+    // Paler belly
+    ctx.beginPath();
+    ctx.ellipse(k * 0.06, k * 0.3, k * 0.36, k * 0.13, -0.06, 0, TAU);
+    ctx.fillStyle = '#c6bbae';
+    ctx.fill();
+
+    // Eye, nose, whiskers
+    ctx.beginPath();
+    ctx.arc(k * 0.44, -k * 0.06, k * 0.07, 0, TAU);
+    ctx.fillStyle = '#15120f';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(k * 0.78, k * 0.12, k * 0.06, 0, TAU);
+    ctx.fillStyle = '#d8a6a6';
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(30, 24, 18, 0.55)';
+    ctx.lineWidth = s * 0.022;
+    for (const angle of [-0.3, 0, 0.3]) {
+      ctx.beginPath();
+      ctx.moveTo(k * 0.74, k * 0.14);
+      ctx.lineTo(k * 0.74 + Math.cos(angle) * k * 0.34, k * 0.14 + Math.sin(angle) * k * 0.34);
+      ctx.stroke();
+    }
   }
 
-  function drawCake(ctx, s, t, p) {
+  function drawLizard(ctx, s, t, p) {
     const k = s * 0.5;
-    const cherryBob = Math.sin(t / 190) * s * 0.022;
+    const flick = Math.sin(t / 220) * 0.22;
 
-    softShadow(ctx, s, () => roundRect(ctx, -k * 0.7, k * 0.2, k * 1.4, k * 0.6, k * 0.1));
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.1, k * 0.32, k * 0.5));
 
-    // Sponge layers
-    roundRect(ctx, -k * 0.7, -k * 0.1, k * 1.4, k * 0.4, k * 0.07);
-    ctx.fillStyle = '#F2C98A';
-    ctx.fill();
-    outline(ctx, s, p, 0.7);
-    ctx.stroke();
-
-    roundRect(ctx, -k * 0.7, k * 0.3, k * 1.4, k * 0.42, k * 0.07);
-    ctx.fillStyle = '#E8B873';
-    ctx.fill();
-    outline(ctx, s, p, 0.7);
-    ctx.stroke();
-
-    // Cream between the layers
-    roundRect(ctx, -k * 0.72, k * 0.18, k * 1.44, k * 0.16, k * 0.06);
-    ctx.fillStyle = '#FFF2E0';
-    ctx.fill();
-    outline(ctx, s, p, 0.55);
-    ctx.stroke();
-
-    // Frosting with drips
+    /*
+     * The tail is the silhouette cue, so it gets real length — it sweeps down
+     * and curls back on itself.
+     */
     ctx.beginPath();
-    ctx.moveTo(-k * 0.72, -k * 0.1);
-    ctx.lineTo(-k * 0.72, -k * 0.34);
-    ctx.quadraticCurveTo(0, -k * 0.62, k * 0.72, -k * 0.34);
-    ctx.lineTo(k * 0.72, -k * 0.1);
-    ctx.quadraticCurveTo(k * 0.5, k * 0.06, k * 0.34, -k * 0.1);
-    ctx.quadraticCurveTo(k * 0.04, k * 0.1, -k * 0.2, -k * 0.1);
-    ctx.quadraticCurveTo(-k * 0.46, k * 0.04, -k * 0.72, -k * 0.1);
-    ctx.closePath();
-    ctx.fillStyle = '#FF7FB0';
-    ctx.fill();
-    outline(ctx, s, p, 0.8);
+    ctx.moveTo(0, k * 0.2);
+    ctx.quadraticCurveTo(k * 0.2, k * 0.74, -k * 0.24 + flick * k * 0.4, k * 0.92);
+    ctx.strokeStyle = '#6e8a3f';
+    ctx.lineWidth = s * 0.11;
+    ctx.lineCap = 'round';
     ctx.stroke();
-
-    // Cherry on top, wobbling
-    ctx.beginPath();
-    ctx.arc(0, -k * 0.56 + cherryBob, k * 0.17, 0, TAU);
-    ctx.fillStyle = '#E02040';
-    ctx.fill();
-    outline(ctx, s, p, 0.6);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -k * 0.7 + cherryBob);
-    ctx.quadraticCurveTo(k * 0.14, -k * 0.92, k * 0.06, -k * 0.98);
-    ctx.strokeStyle = '#4F7A2A';
     ctx.lineWidth = s * 0.05;
+    ctx.beginPath();
+    ctx.moveTo(-k * 0.1, k * 0.74);
+    ctx.quadraticCurveTo(-k * 0.3, k * 0.92, -k * 0.36 + flick * k * 0.5, k * 0.7);
     ctx.stroke();
+
+    // Four splayed legs with toes
+    ctx.strokeStyle = '#5d7633';
+    ctx.lineWidth = s * 0.05;
+    for (const side of [-1, 1]) {
+      for (const y of [-k * 0.2, k * 0.24]) {
+        ctx.beginPath();
+        ctx.moveTo(side * k * 0.14, y);
+        ctx.lineTo(side * k * 0.46, y + (y < 0 ? -k * 0.18 : k * 0.2));
+        ctx.stroke();
+        for (const spread of [-0.3, 0, 0.3]) {
+          ctx.beginPath();
+          ctx.moveTo(side * k * 0.46, y + (y < 0 ? -k * 0.18 : k * 0.2));
+          ctx.lineTo(side * k * 0.6, y + (y < 0 ? -k * 0.3 : k * 0.34) + spread * k * 0.16);
+          ctx.lineWidth = s * 0.025;
+          ctx.stroke();
+        }
+        ctx.lineWidth = s * 0.05;
+      }
+    }
+
+    // Body
+    ctx.beginPath();
+    ctx.ellipse(0, k * 0.02, k * 0.22, k * 0.44, 0, 0, TAU);
+    ctx.fillStyle = '#6e8a3f';
+    ctx.fill();
+    outline(ctx, s, p, 0.85);
+    ctx.stroke();
+
+    // Darker banding across the back
+    ctx.strokeStyle = '#4a5f26';
+    ctx.lineWidth = s * 0.05;
+    for (const y of [-k * 0.18, k * 0.04, k * 0.26]) {
+      ctx.beginPath();
+      ctx.moveTo(-k * 0.18, y);
+      ctx.lineTo(k * 0.18, y);
+      ctx.stroke();
+    }
+
+    // A distinctly wider head
+    ctx.beginPath();
+    ctx.ellipse(0, -k * 0.5, k * 0.25, k * 0.2, 0, 0, TAU);
+    ctx.fillStyle = '#7d9a49';
+    ctx.fill();
+    outline(ctx, s, p, 0.7);
+    ctx.stroke();
+
+    ctx.fillStyle = '#161608';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * k * 0.14, -k * 0.54, k * 0.055, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  function drawEgg(ctx, s, t, p) {
+    const k = s * 0.5;
+    const shimmer = Math.sin(t / 400) * 0.03;
+
+    softShadow(ctx, s, () => blob(ctx, 0, k * 0.5, k * 0.5, k * 0.16));
+
+    // A few crossed twigs beneath — a suggestion of a nest, not a basket
+    ctx.strokeStyle = '#6b5433';
+    ctx.lineWidth = s * 0.055;
+    ctx.lineCap = 'round';
+    for (const angle of [-0.25, 0.1, 0.45]) {
+      ctx.beginPath();
+      ctx.moveTo(-k * 0.78, k * 0.52 + angle * k * 0.24);
+      ctx.lineTo(k * 0.78, k * 0.52 - angle * k * 0.24);
+      ctx.stroke();
+    }
+
+    /*
+     * The calmest item in the set, deliberately: when four other things on
+     * screen have legs, one plain shape is a relief to read.
+     */
+    ctx.beginPath();
+    ctx.ellipse(0, -k * 0.02, k * 0.38, k * 0.5, 0.06, 0, TAU);
+    ctx.fillStyle = '#e8e2cc';
+    ctx.fill();
+    outline(ctx, s, p);
+    ctx.stroke();
+
+    // Brown speckles
+    ctx.fillStyle = '#9c7a4a';
+    const speckles = [[-0.12, -0.24, 0.07], [0.14, -0.06, 0.06], [-0.05, 0.16, 0.05],
+      [0.18, 0.26, 0.045], [-0.2, 0.04, 0.045], [0.02, -0.38, 0.04]];
+    for (const [sx, sy, sr] of speckles) {
+      ctx.beginPath();
+      ctx.arc(sx * s, sy * s, sr * s, 0, TAU);
+      ctx.fill();
+    }
+
+    // Soft highlight, so it reads as a rounded shell
+    ctx.beginPath();
+    ctx.ellipse(-k * 0.13, -k * 0.24, k * 0.11, k * (0.17 + shimmer), -0.4, 0, TAU);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fill();
   }
 
   /**
    * Canvas draw routines keyed by the shared catalogue id, then merged into
    * NS.FOODS in catalogue order so the engine's "food type 3" always means the
-   * same snack in every renderer.
+   * same creature in every renderer.
    */
   const DRAWERS = {
-    pizza: drawPizza,
-    burger: drawBurger,
-    donut: drawDonut,
-    banana: drawBanana,
-    taco: drawTaco,
-    fries: drawFries,
-    apple: drawApple,
-    cake: drawCake,
+    beetle: drawBeetle,
+    cricket: drawCricket,
+    spider: drawSpider,
+    grub: drawGrub,
+    frog: drawFrog,
+    mouse: drawMouse,
+    lizard: drawLizard,
+    egg: drawEgg,
   };
 
   NS.FOODS = NS.FOOD_CATALOGUE.map((item) => ({

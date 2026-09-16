@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#241A38" />
-  <meta name="description" content="Hungry Noodle 3D — a goofy cartoon Snake game rendered with Three.js. Four modes, three difficulties, eight ridiculous snacks." />
+  <meta name="description" content="Hungry Noodle 3D — a Snake game in a procedurally generated jungle, rendered with Three.js. Five modes, three difficulties, eight creatures to hunt." />
   <title>Play — Hungry Noodle 3D</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -88,7 +88,7 @@
               <h2 class="overlay__title" id="menu-mode-name">🐍 Classic</h2>
               <p class="overlay__text" id="menu-mode-blurb">Walls kill. Pure, traditional Snake.</p>
 
-              <button type="button" class="btn btn--primary btn--lg btn--play" id="btn-play">Play 🍕</button>
+              <button type="button" class="btn btn--primary btn--lg btn--play" id="btn-play">Play 🦎</button>
 
               <div class="menu-section">
                 <h3 class="menu-section__title" id="modes-label">Game mode</h3>
@@ -123,8 +123,8 @@
             <div class="overlay__card" id="panel-ready" hidden>
               <p class="overlay__kicker">Ready</p>
               <h2 class="overlay__title">Feed the noodle</h2>
-              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the pad below. Every snack makes him longer, greedier and <b>faster</b>.</p>
-              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start eating 🍕</button>
+              <p class="overlay__text">Steer with the arrow keys, <b>W A S D</b>, or the pad below. Every catch makes him longer, greedier and <b>faster</b>.</p>
+              <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-start">Start hunting 🦎</button>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>
             </div>
 
@@ -161,7 +161,7 @@
               </dl>
               <p class="badge-new" id="new-record" hidden>New High Score!</p>
               <div class="overlay__actions">
-                <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Eat again 🍕</button>
+                <button type="button" class="btn btn--primary btn--lg" id="btn-overlay-again">Hunt again 🦎</button>
                 <button type="button" class="btn btn--ghost btn--lg" id="btn-overlay-menu">Main menu</button>
               </div>
               <p class="overlay__hint">or press <kbd>Space</kbd></p>

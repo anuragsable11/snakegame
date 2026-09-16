@@ -2000,7 +2000,17 @@ section('3D: the floor is instanced geometry');
   const code = codeOf('js/render/renderer3d.js');
 
   check('the painted checker texture is gone', !/buildBoardTexture/.test(code));
-  check('no CanvasTexture is created for the floor', !/CanvasTexture/.test(code));
+  // The floor must be geometry, not a painted texture. The renderer does build
+  // one CanvasTexture — the environment gradient — which is a different thing.
+  check('the floor builder paints no texture', (() => {
+    const start = code.indexOf('function buildFloorTiles');
+    const body = code.slice(start, code.indexOf('function buildArena', start));
+    return !/CanvasTexture|createElement\('canvas'\)/.test(body);
+  })());
+  check('the only CanvasTexture is the environment map', (() => {
+    const uses = code.split('new THREE.CanvasTexture').length - 1;
+    return uses <= 1 && /function applyEnvironment/.test(code);
+  })());
   check('the floor is built from InstancedMesh',
     /new THREE\.InstancedMesh\(geo\.slab/.test(code));
   check('there are two, one per checker parity',
@@ -2262,6 +2272,218 @@ section('jungle: the 2D fallback is unaffected');
 
   const r2d = codeOf('js/render/renderer2d.js');
   check('the 2D renderer never mentions the jungle', !/jungle/i.test(r2d));
+}
+
+
+
+section('jungle: the board stays visible');
+{
+  /*
+   * The first cut of the jungle put a ring of trees around the arena — and the
+   * camera stands in that ring, so a third of them ended up directly in front
+   * of the lens. These checks build the real world and read every instance back
+   * to make sure nothing tall is ever between the camera and the board.
+   */
+  const app = boot({ webgl: true, withThree: true, store: new Map() });
+  const THREE = app.THREE;
+  const NS = app.ns;
+
+  const scene = new THREE.Scene();
+  const arena = new THREE.Group();
+  scene.add(arena);
+
+  const GRID = 20;
+  const elevation = (42 * Math.PI) / 180;
+  const distance = GRID * 1.319;
+  const camera = new THREE.Vector3(
+    0, distance * Math.sin(elevation), distance * Math.cos(elevation)
+  );
+
+  const world = NS.buildJungleWorld(THREE, {
+    scene, arena, grid: GRID, palette: NS.THEMES.jungle, shadows: true, camera,
+  });
+
+  const matrix = new THREE.Matrix4();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+
+  let placed = 0;
+  let tallBlockers = 0;
+  let tallest = 0;
+  arena.traverse((object) => {
+    if (!object.isInstancedMesh) return;
+    for (let i = 0; i < object.count; i += 1) {
+      object.getMatrixAt(i, matrix);
+      matrix.decompose(position, quat, scale);
+      placed += 1;
+      const height = Math.max(scale.x, scale.y, scale.z);
+      const inFront = position.z > GRID * 0.22 &&
+        position.z < camera.z + 6 &&
+        Math.abs(position.x) < 10;
+      // The boundary logs are low and ARE the wall — they are meant to be there
+      if (inFront && height > 1.5) {
+        tallBlockers += 1;
+        tallest = Math.max(tallest, height);
+      }
+    }
+  });
+
+  check('the jungle actually places scenery', placed > 150, String(placed));
+  check('nothing tall stands between the camera and the board',
+    tallBlockers === 0, `${tallBlockers} blockers, tallest ${tallest.toFixed(1)}`);
+
+  // Fog must not touch the playfield
+  const fog = scene.fog;
+  const toCentre = Math.hypot(camera.y, camera.z);
+  const toFarEdge = Math.hypot(camera.y, camera.z + 10);
+  check('fog is linear, so its range is controllable', Boolean(fog && fog.isFog));
+  check('fog starts beyond the far edge of the board',
+    fog.near > toFarEdge, `${fog.near.toFixed(0)} vs board edge ${toFarEdge.toFixed(0)}`);
+  check('so the board is completely unfogged',
+    (toCentre - fog.near) < 0 && (toFarEdge - fog.near) < 0);
+  check('but the treeline still fades', fog.far > fog.near && fog.far < GRID * 6,
+    `${fog.near.toFixed(0)} -> ${fog.far.toFixed(0)}`);
+
+  world.dispose();
+}
+
+section('jungle: the snake reads against the ground');
+{
+  const app = boot({ store: new Map() });
+  const theme = app.ns.THEMES.jungle;
+
+  function luminance(hex) {
+    const raw = String(hex).replace('#', '');
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(raw.slice(i, i + 2), 16) / 255);
+    const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  function contrast(a, b) {
+    const l1 = luminance(a);
+    const l2 = luminance(b);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  /*
+   * A real jungle snake is camouflaged, which is precisely wrong for a game.
+   * 4.5:1 is the readable bar here, not the 3:1 minimum the arcade themes use,
+   * because the jungle floor is visually busy as well as dark.
+   */
+  const onFloor = contrast(theme.body, theme.board1);
+  check('the snake clears 4.5:1 against the clearing floor', onFloor >= 4.5,
+    onFloor.toFixed(2));
+  check('and is lighter than the ground, not darker',
+    luminance(theme.body) > luminance(theme.board1));
+  check('the head highlight is lighter still',
+    luminance(theme.bodyLight) > luminance(theme.body));
+  check('the blotches are darker than the body',
+    luminance(theme.bodyDark) < luminance(theme.body));
+}
+
+section('jungle: PBR materials have something to reflect');
+{
+  const code = codeOf('js/render/renderer3d.js');
+  check('an environment map is generated', /function applyEnvironment/.test(code));
+  check('it uses the PMREM generator already in the build',
+    /new THREE\.PMREMGenerator\(renderer\)/.test(code));
+  check('it is applied to the scene', /scene\.environment = environmentMap/.test(code));
+  check('it is best-effort, not load-bearing',
+    /catch \(error\) \{[\s\S]{0,80}environmentMap = null/.test(code));
+  check('it is cleared when leaving the jungle', /scene\.environment = null/.test(code));
+  check('and disposed with the renderer', /environmentMap\.dispose\(\)/.test(code));
+  check('the jungle is lit brightly enough for standard materials',
+    /hemi\.intensity = 0\.95/.test(code) && /key\.intensity = 2\.0/.test(code));
+
+  // It must still build with a renderer that cannot do PMREM
+  const app = boot({ webgl: true, withThree: true, store: new Map() });
+  check('a renderer without PMREM support still boots', app.game().renderer.id === '3d');
+  app.click('btn-play');
+  app.frame(16);
+  check('and still renders', (app.counts.glRenders || 0) > 0);
+}
+
+
+
+section('prey: the catalogue is creatures, not junk food');
+{
+  const app = boot({ store: new Map() });
+  const NS = app.ns;
+  const EXPECTED = ['beetle', 'cricket', 'spider', 'grub', 'frog', 'mouse', 'lizard', 'egg'];
+
+  check('eight creatures', NS.FOOD_CATALOGUE.length === 8, String(NS.FOOD_CATALOGUE.length));
+  check('they are the jungle prey set',
+    NS.FOOD_CATALOGUE.map((f) => f.id).join(',') === EXPECTED.join(','),
+    NS.FOOD_CATALOGUE.map((f) => f.id).join(','));
+  check('every one has a crumb colour for the particles',
+    NS.FOOD_CATALOGUE.every((f) => /^#[0-9a-f]{6}$/i.test(f.crumb)));
+  check('crumb colours are all distinct',
+    new Set(NS.FOOD_CATALOGUE.map((f) => f.crumb)).size === 8);
+
+  // Nothing anywhere should still be serving pizza
+  const JUNK = /\b(pizza|burger|donut|taco|fries|cake)\b/i;
+  for (const file of ['js/config.js', 'js/art.js', 'js/render/renderer3d.js',
+    'index.html', 'play.html']) {
+    check(`${file} has no junk food left`, !JUNK.test(codeOf(file)), file);
+  }
+
+  check('the 2D drawers line up with the catalogue by index',
+    NS.FOODS.every((f, i) => f.id === NS.FOOD_CATALOGUE[i].id &&
+      typeof f.draw === 'function'));
+}
+
+section('prey: every creature renders in both renderers');
+{
+  // 2D is covered by the draw probes above; this is the 3D half
+  const app = boot({ webgl: true, withThree: true, store: new Map() });
+  app.click('btn-play');
+
+  let built = 0;
+  const broken = [];
+  for (let i = 0; i < app.ns.FOOD_CATALOGUE.length; i += 1) {
+    try {
+      app.engine().state.food = { x: 5, y: 5, type: i };
+      app.frame(16);
+      built += 1;
+    } catch (error) {
+      broken.push(`${app.ns.FOOD_CATALOGUE[i].id}: ${error.message}`);
+    }
+  }
+  check('all eight 3D prey models build and render', built === 8, broken.join(' | '));
+
+  const code = codeOf('js/render/renderer3d.js');
+  for (const id of ['beetle', 'cricket', 'spider', 'grub', 'frog', 'mouse', 'lizard', 'egg']) {
+    check(`3D builder exists for ${id}`, code.includes(`${id}(group)`));
+  }
+  check('the 3D builders allocate no geometry of their own',
+    !/new THREE\.\w+Geometry/.test(code.slice(code.indexOf('const FOOD_BUILDERS'),
+      code.indexOf('function getFoodModel'))));
+}
+
+section('prey: determinism is unaffected');
+{
+  /*
+   * Food TYPE is an index into the catalogue, and the engine picks it from the
+   * seeded RNG. Swapping what the indices depict must not change any run.
+   */
+  const t = makeEngine({ seed: 9182 });
+  t.engine.start();
+  const types = [];
+  t.engine.on('foodSpawned', () => types.push(t.engine.state.food.type));
+  for (let i = 0; i < 40; i += 1) t.engine.tick();
+
+  const again = makeEngine({ seed: 9182 });
+  again.engine.start();
+  const typesAgain = [];
+  again.engine.on('foodSpawned', () => typesAgain.push(again.engine.state.food.type));
+  for (let i = 0; i < 40; i += 1) again.engine.tick();
+
+  check('the same seed still yields the same creature sequence',
+    JSON.stringify(types) === JSON.stringify(typesAgain));
+  check('types stay inside the catalogue',
+    types.every((v) => v >= 0 && v < 8) && typesAgain.every((v) => v >= 0 && v < 8));
+  check('the engine still never names a creature',
+    !/beetle|cricket|spider|grub|frog|mouse|lizard|egg/i.test(codeOf('js/core/engine.js')));
 }
 
 

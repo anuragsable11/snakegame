@@ -15,19 +15,23 @@ window.HungryNoodle = window.HungryNoodle || {};
   /* ---------------------------------------------------------------- Rules */
 
   /**
-   * The menu, as pure data. Both renderers map over this by index — the 2D one
-   * attaches a canvas `draw`, the 3D one builds a Three.js group — so the
-   * engine can talk about "food type 3" without knowing what a pizza is.
+   * The prey, as pure data. Both renderers map over this by index — the 2D
+   * one attaches a canvas `draw`, the 3D one builds a Three.js group — so
+   * the engine can talk about "food type 3" without knowing what a frog is.
+   *
+   * Order is part of the replay contract: a stored replay reproduces food
+   * type 3, so reordering this list would change what old replays show.
+   * Appending is safe; reordering is not.
    */
   NS.FOOD_CATALOGUE = Object.freeze([
-    { id: 'pizza', name: 'pizza', crumb: '#FFC55C' },
-    { id: 'burger', name: 'burger', crumb: '#F0B462' },
-    { id: 'donut', name: 'donut', crumb: '#FF8FC5' },
-    { id: 'banana', name: 'banana', crumb: '#FFE14D' },
-    { id: 'taco', name: 'taco', crumb: '#F2B233' },
-    { id: 'fries', name: 'fries', crumb: '#FFD470' },
-    { id: 'apple', name: 'apple', crumb: '#E93B4E' },
-    { id: 'cake', name: 'cake', crumb: '#FF7FB0' },
+    { id: 'beetle', name: 'beetle', crumb: '#4a6b3a' },
+    { id: 'cricket', name: 'cricket', crumb: '#7fae3a' },
+    { id: 'spider', name: 'spider', crumb: '#3a3340' },
+    { id: 'grub', name: 'grub', crumb: '#e8dcae' },
+    { id: 'frog', name: 'frog', crumb: '#4fa84f' },
+    { id: 'mouse', name: 'mouse', crumb: '#8a7a6a' },
+    { id: 'lizard', name: 'lizard', crumb: '#7f9a4a' },
+    { id: 'egg', name: 'egg', crumb: '#e8e0cc' },
   ]);
 
   NS.FOOD_TYPES = NS.FOOD_CATALOGUE.length;

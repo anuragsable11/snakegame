@@ -40,7 +40,8 @@ Everything listed here is implemented and covered by the test suite.
 - Grid-based Snake on a 20 × 20 board with interpolated (non-jumping) motion
 - **Five modes** — Classic, Time Attack, Survival, Endless, Daily Challenge
 - **Three difficulties** that change real numbers, not labels (see table below)
-- Eight snacks, chosen at random, never the same one twice in a row
+- Eight creatures to hunt — beetle, cricket, spider, grub, frog, mouse,
+  lizard and a speckled egg — chosen at random, never the same one twice running
 - Score is `10 × current level`; hunger streaks show a combo chip
 - Reverse moves blocked; turns buffered so fast inputs are never dropped
 - Win condition: fill the entire board
@@ -358,7 +359,7 @@ has no npm dependencies.
 npm test
 ```
 
-**565 checks, 565 passing** at the time of writing.
+**794 checks, 794 passing** at the time of writing.
 
 It runs three ways:
 
