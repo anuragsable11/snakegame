@@ -27,6 +27,7 @@
       timerChip: $('timer-chip'),
       toast: $('toast'),
       toastText: $('toast-text'),
+      ghostFlag: $('ghost-flag'),
 
       panelMenu: $('panel-menu'),
       panelReady: $('panel-ready'),
@@ -93,6 +94,12 @@
       toastTimer = window.setTimeout(() => {
         el.toast.classList.remove('is-visible');
       }, NS.CONFIG.TOAST_MS);
+    }
+
+    /** Show or hide the in-game "you are racing your best run" badge. */
+    function setGhostFlag(active) {
+      if (!el.ghostFlag) return;
+      el.ghostFlag.classList.toggle('is-visible', Boolean(active));
     }
 
     function hideToast() {
@@ -457,6 +464,7 @@
       announce,
       say,
       hideToast,
+      setGhostFlag,
       updateHud,
       syncState,
       syncMenu,

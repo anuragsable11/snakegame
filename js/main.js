@@ -47,6 +47,11 @@
     let lastFrameTime = 0;
     let boardSize = 0;
 
+    // Phones pay the most for shadows and the least for them visually, so
+    // the 3D renderer gets a low-power hint on small touch screens.
+    const lowPower = window.matchMedia('(pointer: coarse)').matches &&
+      window.innerWidth <= 640;
+
     const webglOK = NS.isWebGLAvailable() && !!window.THREE;
     // Honour the stored preference, but never promise 3D we can't deliver
     let rendererId = webglOK ? storage.read(KEYS.RENDERER, '3d') : '2d';
@@ -96,7 +101,7 @@
     function createRenderer(id) {
       const canvas = ui.el.canvas;
       if (id === '3d') {
-        const made = NS.createRenderer3D(canvas, { reduced });
+        const made = NS.createRenderer3D(canvas, { reduced, lowPower });
         made.mount();
         return made;
       }
@@ -464,7 +469,9 @@
 
       if (renderer) {
         if (renderer.update) renderer.update(delta, now);
-        if (renderer.setGhost) renderer.setGhost(ghostView());
+        const view = ghostView();
+        if (renderer.setGhost) renderer.setGhost(view);
+        ui.setGhostFlag(view !== null);
         renderer.render(engine, now, delta);
       }
 

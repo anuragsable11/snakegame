@@ -46,6 +46,9 @@
 
     const opts = options || {};
     const reduced = opts.reduced || false;
+    // Small touch screens: keep the look, drop the expensive parts
+    const lowPower = opts.lowPower || false;
+    const shadows = !reduced && !lowPower;
     const grid = NS.CONFIG.GRID_SIZE;
     const half = (grid - 1) / 2;
 
@@ -60,7 +63,7 @@
       powerPreference: 'high-performance',
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.shadowMap.enabled = !reduced;
+    renderer.shadowMap.enabled = shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     if ('outputEncoding' in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
 
@@ -87,7 +90,7 @@
 
     const key = new THREE.DirectionalLight(0xffffff, 1.15);
     key.position.set(grid * 0.5, grid * 1.3, grid * 0.55);
-    key.castShadow = !reduced;
+    key.castShadow = shadows;
     if (key.shadow) {
       const extent = grid * 0.78;
       key.shadow.camera.left = -extent;
@@ -96,7 +99,7 @@
       key.shadow.camera.bottom = -extent;
       key.shadow.camera.near = 1;
       key.shadow.camera.far = grid * 3.2;
-      key.shadow.mapSize.set(reduced ? 512 : 1024, reduced ? 512 : 1024);
+      key.shadow.mapSize.set(shadows ? 1024 : 512, shadows ? 1024 : 512);
       key.shadow.bias = -0.0012;
       key.shadow.normalBias = 0.02;
     }
@@ -219,14 +222,14 @@
 
       floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(span, span), floorMaterial);
       floorMesh.rotation.x = -Math.PI / 2;
-      floorMesh.receiveShadow = !reduced;
+      floorMesh.receiveShadow = shadows;
       arena.add(floorMesh);
 
       // A thick slab underneath so the arena reads as a solid object
       baseMesh = new THREE.Mesh(geo.slab, toon(theme.board2));
       baseMesh.scale.set(span + 1.6, 1.2, span + 1.6);
       baseMesh.position.y = -0.62;
-      baseMesh.receiveShadow = !reduced;
+      baseMesh.receiveShadow = shadows;
       arena.add(baseMesh);
 
       // Four chunky walls
@@ -243,8 +246,8 @@
         const wall = new THREE.Mesh(geo.slab, wallMaterial);
         wall.scale.set(item.sx, height, item.sz);
         wall.position.set(item.x, height / 2, item.z);
-        wall.castShadow = !reduced;
-        wall.receiveShadow = !reduced;
+        wall.castShadow = shadows;
+        wall.receiveShadow = shadows;
         arena.add(wall);
         wallMeshes.push(wall);
       }
@@ -257,7 +260,7 @@
           const cap = new THREE.Mesh(geo.segment, capMaterial);
           cap.scale.setScalar(thickness * 1.35);
           cap.position.set(sx * corner, height * 0.5, sz * corner);
-          cap.castShadow = !reduced;
+          cap.castShadow = shadows;
           arena.add(cap);
           wallMeshes.push(cap);
         }
@@ -278,7 +281,7 @@
     function getSegment(index) {
       if (segmentPool[index]) return segmentPool[index];
       const mesh = new THREE.Mesh(geo.segment, bodyMaterial);
-      mesh.castShadow = !reduced;
+      mesh.castShadow = shadows;
       mesh.visible = false;
       snakeGroup.add(mesh);
       segmentPool[index] = mesh;
@@ -288,7 +291,7 @@
     // The head is a little rig: skull, two eyes, two pupils, a mouth and brows
     const head = new THREE.Group();
     const headSkull = new THREE.Mesh(geo.segment, bodyMaterial);
-    headSkull.castShadow = !reduced;
+    headSkull.castShadow = shadows;
     head.add(headSkull);
 
     const eyes = [];
@@ -389,7 +392,7 @@
       if (position) mesh.position.set(position[0], position[1], position[2]);
       if (scale) mesh.scale.set(scale[0], scale[1], scale[2]);
       if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
-      mesh.castShadow = !reduced;
+      mesh.castShadow = shadows;
       parent.add(mesh);
       return mesh;
     }
@@ -514,8 +517,8 @@
       if (obstaclePool[index]) return obstaclePool[index];
       if (index >= MAX_OBSTACLES) return null;
       const mesh = new THREE.Mesh(geo.cylinder, toon('#6B5B8A'));
-      mesh.castShadow = !reduced;
-      mesh.receiveShadow = !reduced;
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = shadows;
       mesh.visible = false;
       obstacleGroup.add(mesh);
       obstaclePool[index] = mesh;

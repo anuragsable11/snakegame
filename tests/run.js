@@ -1549,6 +1549,315 @@ section('renderers cannot influence the simulation');
   check('and an identical score', via2d.score === via3d.score);
 }
 
+
+/* ========================================================================== *
+ * I. Mobile pass — small screens, portrait, landscape, touch targets
+ * ========================================================================== */
+
+section('mobile: the Phase 2 UI is covered at every breakpoint');
+{
+  const cssText = fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8');
+
+  /** The body of a media query, so a rule can be checked inside it. */
+  function mediaBlock(query) {
+    const out = [];
+    let index = 0;
+    for (;;) {
+      const at = cssText.indexOf(`@media ${query}`, index);
+      if (at < 0) break;
+      const open = cssText.indexOf('{', at);
+      let depth = 0;
+      let i = open;
+      for (; i < cssText.length; i += 1) {
+        if (cssText[i] === '{') depth += 1;
+        else if (cssText[i] === '}') { depth -= 1; if (depth === 0) break; }
+      }
+      out.push(cssText.slice(open, i));
+      index = i;
+    }
+    return out.join('\n');
+  }
+
+  const phone = mediaBlock('(max-width: 640px)');
+  const shortPhone = mediaBlock('(max-width: 640px) and (max-height: 720px)');
+  const landscape = mediaBlock('(orientation: landscape) and (max-height: 600px)');
+  const coarse = mediaBlock('(pointer: coarse)');
+
+  check('a phone breakpoint exists', phone.length > 0);
+  check('a short-phone breakpoint exists', shortPhone.length > 0);
+  check('a landscape breakpoint exists', landscape.length > 0);
+  check('a coarse-pointer breakpoint exists', coarse.length > 0);
+
+  // Every element added in Phase 2 must be sized for a phone
+  for (const selector of ['.overlay__card--menu', '.chip', '.menu-daily',
+    '.menu-ghost', '.menu-best', '.ghost-flag']) {
+    check(`phone rules cover ${selector}`, phone.includes(selector), selector);
+  }
+  for (const selector of ['.overlay__card--menu', '.chip', '.menu-daily', '.menu-ghost']) {
+    check(`landscape rules cover ${selector}`, landscape.includes(selector), selector);
+  }
+
+  // The menu card must actually be able to shrink
+  check('the menu card scrolls rather than clipping',
+    /\.overlay__card--menu \{[^}]*overflow-y: auto/.test(cssText));
+  check('the menu card is height-capped to the board',
+    /\.overlay__card--menu \{[^}]*max-height: 100%/.test(cssText));
+  check('the blurb is dropped on phones to make room',
+    /\.overlay__card--menu \.overlay__text \{ display: none; \}/.test(phone));
+  check('and dropped in landscape too',
+    /\.overlay__card--menu \.overlay__text \{ display: none; \}/.test(landscape));
+
+  // Hiding the section headings must not cost the chip groups their name
+  check('section headings are visually hidden, not removed',
+    phone.includes('.menu-section__title') && /clip-path: inset\(50%\)/.test(phone),
+    'headings appear to be display:none');
+  check('the chip groups are still labelled in the markup', (() => {
+    const html = fs.readFileSync(path.join(PROJECT, 'play.html'), 'utf8');
+    return /class="chips modes"[^>]*aria-labelledby="modes-label"/.test(html) &&
+      /class="chips difficulties"[^>]*aria-labelledby="difficulty-label"/.test(html);
+  })());
+
+  // Five modes have to fit without becoming a three-row stack
+  check('mode chips go three-up on phones',
+    /\.modes \.chip \{ flex: 1 1 30%; \}/.test(phone));
+  check('six controls fit in a three-column grid',
+    /\.controls \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/.test(phone));
+
+  // These two keep the height budget below honest: if the CSS stops hiding
+  // them, the budget model above is wrong and this catches it.
+  check('the Daily note is dropped on phones',
+    /\.menu-daily__note \{ display: none; \}/.test(phone));
+  check('the ghost line is dropped on short phones (the in-game flag covers it)',
+    /\.menu-ghost \{ display: none; \}/.test(shortPhone));
+}
+
+section('mobile: touch targets');
+{
+  const cssText = fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8');
+  const coarseStart = cssText.indexOf('@media (pointer: coarse)');
+  const coarse = cssText.slice(coarseStart, cssText.indexOf('}\n', cssText.indexOf('.nav__link', coarseStart)));
+
+  /** Pull a min-height out of a coarse-pointer rule. */
+  function minHeightFor(selector) {
+    const rule = new RegExp(`\\${selector} \\{ min-height: (\\d+)px; \\}`);
+    const found = coarse.match(rule);
+    return found ? Number(found[1]) : 0;
+  }
+
+  check('control buttons reach 44px on touch', minHeightFor('.controls .btn') >= 44,
+    String(minHeightFor('.controls .btn')));
+  check('theme chips reach 44px on touch', minHeightFor('.theme-btn') >= 44,
+    String(minHeightFor('.theme-btn')));
+  check('d-pad buttons reach 44px on touch', minHeightFor('.dpad__btn') >= 44,
+    String(minHeightFor('.dpad__btn')));
+  check('menu chips reach at least 40px on touch', minHeightFor('.chip') >= 40,
+    String(minHeightFor('.chip')));
+
+  // The d-pad is the primary control: it must stay large at every phone size
+  const dpadSizes = [...cssText.matchAll(/\.dpad \{[^}]*minmax\((\d+)px/g)].map((m) => Number(m[1]));
+  check('the d-pad never drops below 48px per key',
+    dpadSizes.length > 0 && dpadSizes.every((v) => v >= 48), dpadSizes.join(', '));
+}
+
+section('mobile: the menu fits the board');
+{
+  /*
+   * A height budget, not a pixel-perfect layout. Each entry is the vertical
+   * space a block takes at the phone breakpoint, read from style.css. The point
+   * is to catch the menu growing past the board again, which is exactly what
+   * happened when the Daily banner and ghost note were added.
+   */
+  function menuHeight({ daily, shortPhone }) {
+    const pad = shortPhone ? 10 + 12 : 14 + 16;
+    const kicker = shortPhone ? 22 : 24;
+    const title = (shortPhone ? 6 : 8) + (shortPhone ? 22 : 26);
+    const play = (shortPhone ? 10 : 12) + 50;          // min-height 44 + border
+    const chipRow = shortPhone ? 38 : 40;
+    const modes = (shortPhone ? 8 : 10) + chipRow * 2 + 6;   // 5 chips, 3-up
+    const difficulty = daily ? 0 : (shortPhone ? 8 : 10) + chipRow;
+    const best = (shortPhone ? 9 : 12) + 20;
+    // The note is hidden on every phone, so the banner is label + date only
+    const banner = daily ? (shortPhone ? 8 + 46 : 10 + 58) : 0;
+    // The ghost line is hidden on short phones; the in-game flag replaces it
+    const ghost = shortPhone ? 0 : 8 + 20;
+    return pad + kicker + title + play + modes + difficulty + best + banner + ghost;
+  }
+
+  // Board height = min(100% of width, 70dvh)
+  const boards = [
+    { name: '390x844 (iPhone 12)', board: Math.min(390 - 20, 844 * 0.7), shortPhone: false },
+    { name: '360x640 (small Android)', board: Math.min(360 - 20, 640 * 0.7), shortPhone: true },
+    { name: '320x568 (iPhone SE)', board: Math.min(320 - 20, 568 * 0.7), shortPhone: true },
+  ];
+
+  for (const device of boards) {
+    const usable = device.board - 28;            // overlay padding
+    for (const daily of [false, true]) {
+      const needed = menuHeight({ daily, shortPhone: device.shortPhone });
+      const overflow = Math.max(0, Math.round(needed - usable));
+      check(`${device.name}${daily ? ' (daily)' : ''}: menu overflows by < 40px`,
+        overflow < 40, `${overflow}px over (needs ${Math.round(needed)}, has ${Math.round(usable)})`);
+    }
+  }
+
+  /*
+   * Landscape: the board is sized by height, so this is the tightest the
+   * menu ever gets. Values read from the landscape block in style.css.
+   */
+  function landscapeMenuHeight(daily) {
+    const pad = 10 + 12;
+    const kicker = 20;
+    const title = 4 + 20;
+    const play = 12 + 50;
+    const modes = 7 + 36 * 2 + 5;          // 5 chips, three-up
+    const difficulty = daily ? 0 : 7 + 36;
+    const best = 8 + 18;
+    const banner = daily ? 7 + 46 : 0;     // note hidden
+    return pad + kicker + title + play + modes + difficulty + best;
+  }
+
+  for (const device of [
+    { name: '844x390 landscape', w: 844, h: 390 },
+    { name: '740x360 landscape', w: 740, h: 360 },
+  ]) {
+    const board = Math.min(device.w * 0.58, device.h * 0.78);
+    const usable = board - 20;
+    for (const daily of [false, true]) {
+      const needed = landscapeMenuHeight(daily) + (daily ? 53 : 0);
+      const overflow = Math.max(0, Math.round(needed - usable));
+      check(`${device.name}${daily ? ' (daily)' : ''}: menu overflows by < 40px`,
+        overflow < 40, `${overflow}px over (needs ${needed}, has ${Math.round(usable)})`);
+    }
+  }
+
+  check('the ghost line is dropped in landscape too',
+    /.menu-ghost { display: none; }/.test(
+      fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8')
+        .slice(fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8')
+          .indexOf('@media (orientation: landscape) and (max-height: 600px)'))));
+
+  // The Play button must be reachable without scrolling at all
+  for (const device of boards) {
+    const pad = device.shortPhone ? 10 : 14;
+    const kicker = device.shortPhone ? 22 : 24;
+    const title = (device.shortPhone ? 6 : 8) + (device.shortPhone ? 22 : 26);
+    const toPlayBottom = pad + kicker + title + (device.shortPhone ? 10 : 12) + 50;
+    check(`${device.name}: Play is above the fold without scrolling`,
+      toPlayBottom <= device.board - 28,
+      `${Math.round(toPlayBottom)} vs ${Math.round(device.board - 28)}`);
+  }
+}
+
+section('mobile: the ghost flag');
+{
+  const html = fs.readFileSync(path.join(PROJECT, 'play.html'), 'utf8');
+  const cssText = fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8');
+
+  check('the ghost flag exists in the markup', /id="ghost-flag"/.test(html));
+  check('it sits inside the board', (() => {
+    const board = html.slice(html.indexOf('id="board-wrap"'), html.indexOf('</div>\n\n        <!-- ---'));
+    return board.includes('ghost-flag');
+  })() || html.indexOf('ghost-flag') > html.indexOf('id="board-wrap"'));
+  check('it is decorative for screen readers',
+    /id="ghost-flag" aria-hidden="true"|class="ghost-flag" id="ghost-flag" aria-hidden="true"/.test(html));
+  check('it never intercepts taps', /\.ghost-flag \{[^}]*pointer-events: none/.test(cssText));
+  check('it is hidden outside play',
+    /body:not\(\[data-state="PLAYING"\]\) \.ghost-flag \{ opacity: 0; \}/.test(cssText));
+  check('it has a phone size', /@media[^@]*\.ghost-flag \{[^}]*font-size: 0\.64rem/.test(cssText));
+
+  // Behaviour: the flag follows whether a ghost is actually running
+  const store = new Map();
+  const app = boot({ store });
+  const NS = app.ns;
+
+  app.click('btn-play');
+  app.steps(3);
+  check('no flag when there is no ghost',
+    app.registry.get('ghost-flag').classes.has('is-visible') === false);
+
+  // Record a genuine run, store it, then start again
+  const engine = NS.createEngine({ seed: 4242, mode: 'classic', difficulty: 'normal' });
+  const rec = NS.createRecorder(engine);
+  engine.start();
+  rec.start();
+  if (engine.queueTurn('up')) rec.onTurn('up');
+  for (let i = 0; i < 6; i += 1) engine.tick();
+  const saved = NS.saveBestReplay(rec.finish());
+  check('a ghost-worthy replay was stored', saved === true);
+
+  const second = boot({ store });
+  second.click('btn-play');
+  second.steps(2);
+  check('the flag appears once a ghost is racing',
+    second.registry.get('ghost-flag').classes.has('is-visible') === true,
+    [...second.registry.get('ghost-flag').classes].join(' '));
+  check('the ghost is actually rendered', second.game().renderer.id !== undefined);
+
+  // It must go away when the ghost's replay runs out
+  for (let i = 0; i < 40; i += 1) second.steps(1);
+  check('the flag clears when the ghost finishes or the run ends',
+    second.state() !== 'PLAYING' ||
+    second.registry.get('ghost-flag').classes.has('is-visible') === false,
+    `${second.state()}`);
+}
+
+section('mobile: 3D is cheaper on small touch screens');
+{
+  const code = codeOf('js/render/renderer3d.js');
+  check('the renderer takes a low-power hint', /opts\.lowPower/.test(code));
+  check('shadows are gated behind it', /const shadows = !reduced && !lowPower/.test(code));
+  check('nothing still keys shadows off reduced-motion alone',
+    !/castShadow = !reduced|shadowMap\.enabled = !reduced/.test(code));
+  check('the shadow map shrinks without shadows',
+    /mapSize\.set\(shadows \? 1024 : 512/.test(code));
+
+  const mainCode = codeOf('js/main.js');
+  check('main.js detects coarse pointers', /pointer: coarse/.test(mainCode));
+  check('and only applies it to small screens', /innerWidth <= 640/.test(mainCode));
+  check('the hint reaches the 3D renderer', /createRenderer3D\(canvas, \{ reduced, lowPower \}\)/.test(mainCode));
+
+  // It must still build a working scene with the hint on
+  const low = boot({ webgl: true, withThree: true, store: new Map() });
+  check('3D still initialises', low.game().renderer.id === '3d', low.game().renderer.id);
+  low.click('btn-play');
+  low.frame(16);
+  check('and still renders', (low.counts.glRenders || 0) > 0);
+}
+
+section('mobile: the game is playable with touch alone');
+{
+  const app = boot({ store: new Map() });
+
+  // Everything needed to start and play must be reachable without a keyboard
+  app.pick('modes', 'daily');
+  check('a mode can be chosen by tapping', app.engine().state.mode.id === 'daily');
+  app.pick('modes', 'classic');
+  app.click('btn-play');
+  check('the game starts from a tap', app.state() === 'PLAYING', app.state());
+
+  for (const dir of ['up', 'left', 'down', 'right']) {
+    app.tap(dir);
+    app.steps(1);
+  }
+  check('all four d-pad keys steer', app.state() === 'PLAYING', app.state());
+
+  app.click('btn-pause');
+  check('pause is reachable by tap', app.state() === 'PAUSED', app.state());
+  app.click('btn-pause');
+  check('resume is reachable by tap', app.state() === 'PLAYING', app.state());
+  app.click('btn-menu');
+  check('the menu is reachable by tap', app.screen() === 'menu', app.screen());
+
+  // The d-pad must not be disabled while playing
+  app.click('btn-play');
+  const pad = app.containers['.dpad'].children;
+  check('the d-pad is enabled during play', pad.every((b) => b.disabled === false));
+  app.press('ArrowUp');
+  for (let i = 0; i < 80 && app.state() === 'PLAYING'; i += 1) app.steps(1);
+  check('the d-pad is disabled after game over', pad.every((b) => b.disabled === true));
+}
+
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 if (failures) console.log(failedNames.map((f) => `  - ${f}`).join('\n'));
 process.exit(failures === 0 ? 0 : 1);
