@@ -79,6 +79,7 @@
                   <button type="button" class="chip" data-value="timeattack" aria-pressed="false">⏱️ Time Attack</button>
                   <button type="button" class="chip" data-value="survival" aria-pressed="false">🧱 Survival</button>
                   <button type="button" class="chip" data-value="endless" aria-pressed="false">♾️ Endless</button>
+                  <button type="button" class="chip" data-value="daily" aria-pressed="false">📅 Daily</button>
                 </div>
               </div>
 
@@ -92,6 +93,12 @@
               </div>
 
               <p class="menu-best">Best in this mode: <b id="menu-best">0</b></p>
+              <p class="menu-daily" id="menu-daily" hidden>
+                <span class="menu-daily__label">📅 Daily Challenge</span>
+                <span class="menu-daily__date" id="menu-daily-date">—</span>
+                <span class="menu-daily__note">Same board for everyone today · fixed to Normal</span>
+              </p>
+              <p class="menu-ghost" id="menu-ghost" hidden>👻 Racing your best run</p>
             </div>
 
             <!-- ---------------------- Ready ---------------------- -->
@@ -265,7 +272,11 @@
   <script src="js/particles.js"></script>
   <script src="js/banter.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/core/rng.js"></script>
   <script src="js/core/engine.js"></script>
+  <script src="js/core/replay.js"></script>
+  <script src="js/core/daily.js"></script>
+  <script src="js/core/persistence.js"></script>
   <script src="js/render/face.js"></script>
   <script src="js/render/renderer2d.js"></script>
   <script src="js/render/renderer3d.js"></script>

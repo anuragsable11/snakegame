@@ -40,6 +40,7 @@
     let scorePops = [];
     let deathFlash = 0;
     let shake = 0;
+    let ghost = null;
 
     /* ------------------------------------------------------------ helpers */
 
@@ -113,6 +114,46 @@
         ctx.strokeStyle = theme.ink;
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    /**
+     * The best-run ghost: the same body shape, drawn faint and flat.
+     * Purely a visual overlay — it is positions only, handed in by main.js.
+     */
+    function drawGhost(now) {
+      if (!ghost || !ghost.snake || ghost.snake.length === 0) return;
+
+      const points = ghost.snake.map((segment, index) => {
+        const previous = ghost.previousSnake[index] || segment;
+        let px = previous.x;
+        let py = previous.y;
+        if (Math.abs(segment.x - px) > 1) px = segment.x;
+        if (Math.abs(segment.y - py) > 1) py = segment.y;
+        return {
+          x: (px + (segment.x - px) * ghost.alpha + 0.5) * cell,
+          y: (py + (segment.y - py) * ghost.alpha + 0.5) * cell,
+        };
+      });
+
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = theme.bodyLight;
+      ctx.lineWidth = cell * 0.62;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
+      if (points.length === 1) ctx.lineTo(points[0].x + 0.01, points[0].y);
+      ctx.stroke();
+
+      // A brighter head so you can tell which way the ghost is going
+      ctx.globalAlpha = 0.42;
+      ctx.fillStyle = theme.bodyLight;
+      ctx.beginPath();
+      ctx.arc(points[0].x, points[0].y, cell * 0.36, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
 
@@ -223,6 +264,7 @@
         if (!reduced) NS.drawBackdropMotion(ctx, cssSize, now, theme);
 
         drawObstacles(state);
+        drawGhost(now);
         drawFood(state, now);
         drawNoodle(state, engine.alpha(), now);
         particles.draw(ctx, theme, now);
@@ -237,6 +279,11 @@
       },
 
       /* ------------------------------------------------------------ juice */
+
+      /** @param {object|null} view positions only; never an engine */
+      setGhost(view) {
+        ghost = view;
+      },
 
       onEat(payload) {
         const catalogue = NS.FOOD_CATALOGUE[payload.type] || NS.FOOD_CATALOGUE[0];
@@ -282,6 +329,7 @@
       },
 
       onReset() {
+        ghost = null;
         particles.clear();
         scorePops.length = 0;
         eatFx = null;

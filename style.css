@@ -1142,3 +1142,42 @@ body[data-screen="menu"] .hud { opacity: 0.55; }
 
   .brand__mark { animation: none; }
 }
+
+/* --------------------- Daily Challenge + ghost (Phase 2) ----------------- */
+.menu-daily {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 9px 12px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  border: 3px solid var(--ink);
+  text-align: center;
+}
+
+.menu-daily__label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mint);
+}
+
+.menu-daily__date {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.menu-daily__note {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.menu-ghost {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}

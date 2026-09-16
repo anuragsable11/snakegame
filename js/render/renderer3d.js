@@ -317,6 +317,66 @@
     snakeGroup.add(head);
 
     /* ================================================================== *
+     * The best-run ghost
+     *
+     * A separate pool of translucent spheres. It is fed positions by
+     * main.js and has no access to any engine, so it cannot influence the
+     * live simulation in any way.
+     * ================================================================== */
+
+    const ghostGroup = new THREE.Group();
+    scene.add(ghostGroup);
+    const ghostPool = [];
+    let ghostView = null;
+
+    const ghostMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0xffffff),
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+    });
+
+    function getGhostSegment(index) {
+      if (ghostPool[index]) return ghostPool[index];
+      if (index >= MAX_SEGMENTS) return null;
+      const mesh = new THREE.Mesh(geo.segment, ghostMaterial);
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.visible = false;
+      ghostGroup.add(mesh);
+      ghostPool[index] = mesh;
+      return mesh;
+    }
+
+    function layoutGhost() {
+      for (let i = 0; i < ghostPool.length; i += 1) {
+        if (ghostPool[i]) ghostPool[i].visible = false;
+      }
+      if (!ghostView || !ghostView.snake || ghostView.snake.length === 0) return;
+
+      const count = ghostView.snake.length;
+      for (let i = 0; i < count && i < MAX_SEGMENTS; i += 1) {
+        const segment = ghostView.snake[i];
+        const previous = ghostView.previousSnake[i] || segment;
+        let px = previous.x;
+        let py = previous.y;
+        if (Math.abs(segment.x - px) > 1) px = segment.x;
+        if (Math.abs(segment.y - py) > 1) py = segment.y;
+
+        const mesh = getGhostSegment(i);
+        if (!mesh) break;
+        const along = count === 1 ? 0 : i / (count - 1);
+        mesh.visible = true;
+        mesh.scale.setScalar(0.66 - Math.pow(along, 0.8) * 0.3);
+        mesh.position.set(
+          worldX(px + (segment.x - px) * ghostView.alpha),
+          0.5,
+          worldZ(py + (segment.y - py) * ghostView.alpha)
+        );
+      }
+    }
+
+    /* ================================================================== *
      * Food — one procedural group per type, built lazily and reused
      * ================================================================== */
 
@@ -866,6 +926,7 @@
         const state = engine.state;
         const face = NS.noodleFace(state, now, reduced);
 
+        layoutGhost();
         const headPosition = layoutSnake(state, engine.alpha(), now, face);
         layoutFace(face, now);
         layoutFood(state, now);
@@ -876,6 +937,11 @@
       },
 
       /* ------------------------------------------------------------ juice */
+
+      /** @param {object|null} view positions only; never an engine */
+      setGhost(view) {
+        ghostView = view;
+      },
 
       onEat(payload) {
         const catalogue = NS.FOOD_CATALOGUE[payload.type] || NS.FOOD_CATALOGUE[0];
@@ -912,6 +978,7 @@
       },
 
       onReset() {
+        ghostView = null;
         liveParticles = 0;
         particleGeometry.setDrawRange(0, 0);
         shake = 0;
@@ -935,6 +1002,7 @@
         materialCache.clear();
         if (boardTexture) boardTexture.dispose();
         if (floorMaterial) floorMaterial.dispose();
+        ghostMaterial.dispose();
         particleGeometry.dispose();
         particleMaterial.dispose();
         renderer.dispose();

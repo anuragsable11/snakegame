@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Cancel superseded runs on the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported (package.json engines) and current LTS
+        node: ['18.x', '22.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # The project has no runtime or dev dependencies, but `npm ci` keeps the
+      # lockfile honest and fails loudly if that ever stops being true.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test

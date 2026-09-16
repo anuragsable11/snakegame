@@ -52,6 +52,18 @@
       timed: false,
       levelCap: 12,
     },
+    daily: {
+      id: 'daily',
+      name: 'Daily Challenge',
+      emoji: '📅',
+      blurb: 'One board, one seed, the same for everyone today.',
+      wrap: false,
+      obstacles: false,
+      timed: false,
+      levelCap: 10,
+      // Seeded from the UTC date rather than at random; difficulty is pinned
+      daily: true,
+    },
     endless: {
       id: 'endless',
       name: 'Endless',
@@ -115,16 +127,20 @@
    * @param {number} options.gridSize
    * @param {string} options.mode        key of NS.MODES
    * @param {string} options.difficulty  key of NS.DIFFICULTIES
-   * @param {function} options.random    injectable RNG (tests pass a fixed one)
-   * @param {function} options.now       injectable clock, ms
+   * @param {number|string} options.seed seed for the gameplay RNG
+   * @param {function} options.now       injectable wall clock, used only for
+   *                                     presentation timestamps
    */
   NS.createEngine = function createEngine(options) {
     const opts = options || {};
     const gridSize = opts.gridSize || NS.CONFIG.GRID_SIZE;
-    // Called lazily rather than captured, so a test can swap Math.random
-    // at any point and the engine picks it up.
-    const random = opts.random || (() => Math.random());
     const now = opts.now || (() => performance.now());
+
+    // Every gameplay-affecting random decision comes from here. `seed` is
+    // fixed for the life of the engine; `reset()` rewinds the generator to it,
+    // so replaying the same seed and inputs reproduces the run exactly.
+    let seed = opts.seed === undefined ? NS.randomSeed() : opts.seed;
+    let rng = NS.createRng(seed);
 
     const listeners = Object.create(null);
 
@@ -133,6 +149,7 @@
       mode: NS.MODES[opts.mode] || NS.MODES.classic,
       difficulty: NS.DIFFICULTIES[opts.difficulty] || NS.DIFFICULTIES.normal,
       gridSize,
+      seed: rng.seed,
 
       snake: [],
       previousSnake: [],
@@ -146,11 +163,24 @@
       foodEaten: 0,
       level: 1,
       streak: 0,
+
+      // --- Deterministic clock -------------------------------------------
+      // `tick` counts completed simulation steps; `simTimeMs` is time as the
+      // simulation understands it, advanced by exactly one stepMs per tick.
+      // Every gameplay and event-cadence decision uses these, never the wall
+      // clock, so the same inputs always produce the same run.
+      tick: 0,
+      simTimeMs: 0,
+      lastStreakTick: -9999,
+      lastCloseTick: -9999,
+      lastTurnTick: 0,
+
+      // --- Presentation-only timestamps ----------------------------------
+      // Wall-clock, read by the renderers for face and death animations.
+      // Deliberately excluded from the fingerprint.
       lastEatAt: -99999,
-      lastStreakAt: -99999,
-      lastCloseAt: -99999,
-      lastTurnAt: 0,
       diedAt: 0,
+
       deathCause: 'wall',
 
       stepMs: 150,
@@ -217,12 +247,12 @@
       const free = freeCells(false);
       if (free.length === 0) return false;
 
-      const cell = free[Math.floor(random() * free.length)];
+      const cell = free[rng.below(free.length)];
       const typeCount = NS.FOOD_TYPES;
-      let type = Math.floor(random() * typeCount);
+      let type = rng.below(typeCount);
       // Never serve the same snack twice in a row — variety is the joke
       if (typeCount > 1 && type === state.food.type) {
-        type = (type + 1 + Math.floor(random() * (typeCount - 1))) % typeCount;
+        type = (type + 1 + rng.below(typeCount - 1)) % typeCount;
       }
 
       state.food = { x: cell.x, y: cell.y, type };
@@ -238,7 +268,7 @@
         return Math.abs(cell.x - head.x) + Math.abs(cell.y - head.y) > 4;
       });
       if (free.length === 0) return false;
-      const cell = free[Math.floor(random() * free.length)];
+      const cell = free[rng.below(free.length)];
       state.obstacles.push(cell);
       emit('obstacleSpawned', { obstacle: cell });
       return true;
@@ -257,6 +287,12 @@
     /* ---------------------------------------------------------- lifecycle */
 
     function reset() {
+      // Rewind the generator so the same seed replays the same run
+      rng = NS.createRng(seed);
+      state.seed = rng.seed;
+      state.tick = 0;
+      state.simTimeMs = 0;
+
       state.snake = createStartingSnake();
       state.previousSnake = state.snake.map((s) => ({ ...s }));
       state.direction = 'right';
@@ -267,9 +303,9 @@
       state.level = 1;
       state.streak = 0;
       state.lastEatAt = -99999;
-      state.lastStreakAt = -99999;
-      state.lastCloseAt = -99999;
-      state.lastTurnAt = now();
+      state.lastStreakTick = -9999;
+      state.lastCloseTick = -9999;
+      state.lastTurnTick = state.tick;
       state.deathCause = 'wall';
       state.stepMs = stepDurationForLevel(1);
       state.accumulator = 0;
@@ -296,7 +332,7 @@
 
     function start() {
       reset();
-      state.lastTurnAt = now();
+      state.lastTurnTick = state.tick;
       setStatus(GameState.PLAYING);
       emit('start', {});
     }
@@ -347,7 +383,7 @@
       if (state.queuedTurns.length >= NS.CONFIG.MAX_QUEUED_TURNS) return false;
 
       state.queuedTurns.push(name);
-      state.lastTurnAt = now();
+      state.lastTurnTick = state.tick;
       emit('turn', { direction: name });
       return true;
     }
@@ -412,17 +448,16 @@
     }
 
     function eat(position) {
-      const at = now();
       state.foodEaten += 1;
       state.score += NS.CONFIG.POINTS_PER_FOOD * state.level;
 
       // A "hunger streak" is eating again quickly — it drives the sound pitch
       // and the combo chip, but never the score, so it can't snowball.
-      state.streak = (at - state.lastStreakAt < NS.CONFIG.STREAK_WINDOW_MS)
+      state.streak = (state.simTimeMs - state.lastStreakTick < NS.CONFIG.STREAK_WINDOW_MS)
         ? state.streak + 1
         : 1;
-      state.lastStreakAt = at;
-      state.lastEatAt = at;
+      state.lastStreakTick = state.simTimeMs;
+      state.lastEatAt = now();   // presentation only: drives the chewing face
 
       if (state.mode.timed) {
         state.timeLeftMs += state.difficulty.timeBonus * 1000;
@@ -459,8 +494,7 @@
 
     /** Spot a squeaky-bum moment so the UI can comment on it. */
     function noticeNearMiss(head, vector) {
-      const at = now();
-      if (at - state.lastCloseAt < 6000) return;
+      if (state.simTimeMs - state.lastCloseTick < 6000) return;
 
       const ahead = { x: head.x + vector.x, y: head.y + vector.y };
       const offBoard = !state.mode.wrap && (ahead.x < 0 || ahead.y < 0 ||
@@ -469,9 +503,75 @@
       const intoBlock = state.obstacles.some((b) => samePosition(b, ahead));
 
       if (offBoard || intoSelf || intoBlock) {
-        state.lastCloseAt = at;
+        state.lastCloseTick = state.simTimeMs;
         emit('close', {});
       }
+    }
+
+    /**
+     * Advance the simulation by exactly one step.
+     *
+     * This is the deterministic heart of the engine: it takes no arguments,
+     * reads no clock, and is the only thing that moves the game forward.
+     * Real-time play reaches it through update(); replays call it directly.
+     *
+     * @returns {boolean} true while the run is still going
+     */
+    function tick() {
+      if (state.status !== GameState.PLAYING) return false;
+
+      state.tick += 1;
+      state.simTimeMs += state.stepMs;
+
+      // The Time Attack clock drains in simulated time, so a replay burns
+      // it at exactly the same rate the original run did.
+      if (state.mode.timed) {
+        state.timeLeftMs -= state.stepMs;
+        if (state.timeLeftMs <= 0) {
+          state.timeLeftMs = 0;
+          end('timeout');
+          return false;
+        }
+      }
+
+      step();
+      return state.status === GameState.PLAYING;
+    }
+
+    /**
+     * The simulation state, in a fixed field order.
+     *
+     * Deliberately hand-built rather than JSON.stringify: object key order
+     * is an implementation detail, and presentation-only values (wall-clock
+     * timestamps, the render accumulator) must never reach the fingerprint.
+     * @returns {string}
+     */
+    function canonicalState() {
+      return [
+        'v1',
+        `tick:${state.tick}`,
+        `status:${state.status}`,
+        `mode:${state.mode.id}`,
+        `difficulty:${state.difficulty.id}`,
+        `grid:${gridSize}`,
+        `seed:${rng.seed}`,
+        `rng:${rng.getState()}`,
+        `dir:${state.direction}`,
+        `score:${state.score}`,
+        `eaten:${state.foodEaten}`,
+        `level:${state.level}`,
+        `streak:${state.streak}`,
+        `cause:${state.deathCause}`,
+        `timeLeft:${Math.round(state.timeLeftMs)}`,
+        `snake:${state.snake.map((p) => `${p.x},${p.y}`).join('|')}`,
+        `food:${state.food.x},${state.food.y},${state.food.type}`,
+        `obstacles:${state.obstacles.map((p) => `${p.x},${p.y}`).join('|')}`,
+      ].join(';');
+    }
+
+    /** A stable 8-hex-digit digest of the simulation state. */
+    function fingerprint() {
+      return NS.hashString(canonicalState()).toString(16).padStart(8, '0');
     }
 
     /** Accumulate real time and run as many fixed steps as it pays for. */
@@ -479,24 +579,13 @@
       if (state.status !== GameState.PLAYING) return;
 
       state.elapsedMs += deltaMs;
-
-      if (state.mode.timed) {
-        state.timeLeftMs -= deltaMs;
-        if (state.timeLeftMs <= 0) {
-          state.timeLeftMs = 0;
-          end('timeout');
-          return;
-        }
-      }
-
       state.accumulator += deltaMs;
       // Guard against huge deltas (a backgrounded tab) running dozens of steps.
       let steps = 0;
       while (state.accumulator >= state.stepMs && steps < 4) {
         state.accumulator -= state.stepMs;
         steps += 1;
-        step();
-        if (state.status !== GameState.PLAYING) {
+        if (!tick()) {
           state.accumulator = 0;
           return;
         }
@@ -504,8 +593,8 @@
       if (state.accumulator > state.stepMs) state.accumulator = 0;
 
       // The noodle gets bored if you hold one direction for ages
-      if (now() - state.lastTurnAt > 9000) {
-        state.lastTurnAt = now();
+      if (state.simTimeMs - state.lastTurnTick * state.stepMs > 9000) {
+        state.lastTurnTick = state.tick;
         emit('idle', { seconds: 9 });
       }
     }
@@ -541,7 +630,14 @@
       togglePause,
       queueTurn,
       update,
+      tick,
       reset,
+      canonicalState,
+      fingerprint,
+      getSeed: () => rng.seed,
+      getRngState: () => rng.getState(),
+      /** Change the seed for the NEXT run; reset() or start() applies it. */
+      setSeed(value) { seed = value === undefined ? NS.randomSeed() : value; },
       setMode,
       setDifficulty,
       // exposed for tests

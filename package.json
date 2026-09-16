@@ -1,0 +1,25 @@
+{
+  "name": "hungry-noodle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hungry Noodle 3D — a cartoon Snake game with a deterministic game engine, a Three.js renderer and a Canvas fallback.",
+  "keywords": [
+    "game",
+    "snake",
+    "threejs",
+    "canvas",
+    "webgl",
+    "vanilla-js"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.11.0"
+  },
+  "scripts": {
+    "test": "node tests/run.js",
+    "test:watch": "node --watch-path=js --watch-path=tests --watch-path=play.html tests/run.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

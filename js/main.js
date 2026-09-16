@@ -29,6 +29,18 @@
     const audio = NS.createAudio(storage);
     const banter = NS.createBanter();
 
+    // Records the live run so it can be replayed and raced against later.
+    const recorder = NS.createRecorder(engine);
+
+    // The ghost is an entirely separate engine replaying the stored best
+    // run. It shares nothing with the player: its own seed, its own RNG,
+    // its own state. It cannot collide, score, or perturb the live game.
+    let ghost = null;
+    let ghostAccumulator = 0;
+
+    /** The most recent finished run, kept so the UI can offer a replay. */
+    let lastReplay = null;
+
     let renderer = null;
     let theme = NS.THEMES[storage.read(KEYS.THEME, 'noodle')] || NS.THEMES.noodle;
     let highScore = 0;
@@ -44,6 +56,31 @@
 
     function readHighScore() {
       return Number.parseInt(storage.read(NS.highScoreKey(engine.state.mode.id), '0'), 10) || 0;
+    }
+
+    /**
+     * Extra menu context: the daily banner, and whether a ghost is available
+     * for the current configuration.
+     */
+    function menuInfo() {
+      const isDaily = Boolean(engine.state.mode.daily);
+      const challenge = isDaily ? NS.dailyChallenge() : null;
+      const result = challenge ? NS.getDailyResult(challenge.date) : null;
+
+      const ghostReplay = NS.loadBestReplay(engine.state.mode.id, {
+        difficulty: isDaily ? NS.DAILY_DIFFICULTY : engine.state.difficulty.id,
+        gridSize: engine.state.gridSize,
+        seed: challenge ? challenge.seed : undefined,
+      });
+
+      return {
+        daily: challenge ? {
+          date: challenge.date,
+          label: NS.dailyLabel(challenge.date),
+          best: result ? result.score : null,
+        } : null,
+        hasGhost: Boolean(ghostReplay),
+      };
     }
 
     function refreshHud() {
@@ -135,12 +172,51 @@
       if (engine.state.status === GameState.READY) {
         startRun();
       }
-      if (engine.queueTurn(direction)) audio.turn();
+      if (engine.queueTurn(direction)) {
+        recorder.onTurn(direction);
+        audio.turn();
+      }
+    }
+
+    /**
+     * Pick the seed for the next run. Daily mode is seeded from the UTC
+     * date so everyone gets the same board; everything else is random.
+     */
+    function seedNextRun() {
+      if (engine.state.mode.daily) {
+        // Same board, same speed, for everyone, on this UTC date
+        if (engine.state.difficulty.id !== NS.DAILY_DIFFICULTY) {
+          engine.setDifficulty(NS.DAILY_DIFFICULTY);
+        }
+        engine.setSeed(NS.dailyChallenge().seed);
+      } else {
+        engine.setSeed(NS.randomSeed());
+      }
+    }
+
+    /** Load the stored best run for this configuration, if there is one. */
+    function loadGhost() {
+      ghost = null;
+      const replay = NS.loadBestReplay(engine.state.mode.id, {
+        difficulty: engine.state.difficulty.id,
+        gridSize: engine.state.gridSize,
+        seed: engine.state.mode.daily ? engine.getSeed() : undefined,
+      });
+      if (!replay) return;
+      try {
+        ghost = NS.createPlayback(replay);
+      } catch (error) {
+        // A ghost is a nicety — never let it take the game down
+        ghost = null;
+      }
     }
 
     function startRun() {
       audio.unlock();
+      seedNextRun();
       engine.start();
+      recorder.start();
+      loadGhost();
       ui.showScreen('game');
       ui.syncState(engine.state);
       refreshHud();
@@ -154,7 +230,7 @@
       ui.showScreen('menu');
       ui.hideToast();
       highScore = readHighScore();
-      ui.syncMenu(engine.state, highScore);
+      ui.syncMenu(engine.state, highScore, menuInfo());
       ui.syncState(engine.state);
       refreshHud();
       ui.focusButton(ui.el.btnPlay);
@@ -229,14 +305,14 @@
         engine.setMode(id);
         storage.write(KEYS.MODE, id);
         highScore = readHighScore();
-        ui.syncMenu(engine.state, highScore);
+        ui.syncMenu(engine.state, highScore, menuInfo());
         refreshHud();
       },
 
       setDifficulty(id) {
         engine.setDifficulty(id);
         storage.write(KEYS.DIFFICULTY, id);
-        ui.syncMenu(engine.state, highScore);
+        ui.syncMenu(engine.state, highScore, menuInfo());
         refreshHud();
       },
 
@@ -295,6 +371,20 @@
         audio.gameOver(payload.cause);
       }
 
+      // Persist the run: the replay becomes the ghost, and daily results
+      // are kept per UTC date. Both verify before they are trusted.
+      const replay = recorder.finish();
+      let ghostSaved = false;
+      try {
+        ghostSaved = NS.saveBestReplay(replay);
+      } catch (error) {
+        ghostSaved = false;
+      }
+      if (engine.state.mode.daily) {
+        NS.saveDailyResult(NS.dailyDateKey(), payload.score);
+      }
+      lastReplay = replay;
+
       refreshHud();
       ui.syncState(engine.state, { hideToast: true });
       ui.showGameOver({
@@ -314,8 +404,54 @@
 
     engine.on('reset', () => {
       banter.reset();
+      ghostAccumulator = 0;
       if (renderer && renderer.onReset) renderer.onReset();
     });
+
+    /* -------------------------------------------------------------- ghost */
+
+    /**
+     * Advance the ghost in real time, at the pace its own replay dictates.
+     *
+     * It runs on a private accumulator rather than the player's: the ghost
+     * may be a faster or slower run, so its step duration is its own. Nothing
+     * here can reach the live engine.
+     */
+
+    function advanceGhost(deltaMs) {
+      if (!ghost || ghost.done()) return;
+      if (engine.state.status !== GameState.PLAYING) return;
+
+      ghostAccumulator += deltaMs;
+      let steps = 0;
+      while (ghostAccumulator >= ghost.engine.state.stepMs && steps < 4) {
+        ghostAccumulator -= ghost.engine.state.stepMs;
+        steps += 1;
+        if (!ghost.step()) break;
+      }
+      if (ghostAccumulator > ghost.engine.state.stepMs) ghostAccumulator = 0;
+    }
+
+    /**
+     * A read-only snapshot for the renderers: interpolated body positions and
+     * nothing else. Renderers get positions, not an engine, so there is no way
+     * for drawing code to drive the ghost simulation.
+     *
+     * @returns {{points: Array<{x:number,y:number}>, alpha:number}|null}
+     */
+    function ghostView() {
+      if (!ghost || ghost.done()) return null;
+      if (engine.state.status !== GameState.PLAYING) return null;
+      const ghostState = ghost.engine.state;
+      if (ghostState.status !== GameState.PLAYING) return null;
+
+      return {
+        snake: ghostState.snake,
+        previousSnake: ghostState.previousSnake,
+        alpha: Math.min(ghostAccumulator / ghostState.stepMs, 1),
+        score: ghostState.score,
+      };
+    }
 
     /* --------------------------------------------------------------- loop */
 
@@ -324,8 +460,11 @@
       lastFrameTime = now;
 
       engine.update(delta);
+      advanceGhost(delta);
+
       if (renderer) {
         if (renderer.update) renderer.update(delta, now);
+        if (renderer.setGhost) renderer.setGhost(ghostView());
         renderer.render(engine, now, delta);
       }
 
@@ -352,7 +491,7 @@
     highScore = readHighScore();
     engine.reset();
     ui.showScreen('menu');
-    ui.syncMenu(engine.state, highScore);
+    ui.syncMenu(engine.state, highScore, menuInfo());
     ui.syncState(engine.state);
     refreshHud();
 

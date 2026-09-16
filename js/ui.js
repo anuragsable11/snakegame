@@ -34,6 +34,9 @@
       panelGameOver: $('panel-gameover'),
 
       menuBest: $('menu-best'),
+      menuDaily: $('menu-daily'),
+      menuDailyDate: $('menu-daily-date'),
+      menuGhost: $('menu-ghost'),
       menuModeName: $('menu-mode-name'),
       menuModeBlurb: $('menu-mode-blurb'),
 
@@ -230,12 +233,34 @@
       }
     }
 
-    function syncMenu(state, highScore) {
+    /**
+     * @param {object} state
+     * @param {number} highScore
+     * @param {{daily?: {date: string, label: string, best: number|null},
+     *          hasGhost?: boolean}} [extra]
+     */
+    function syncMenu(state, highScore, extra) {
       syncChips(el.modes, state.mode.id);
       syncChips(el.difficulties, state.difficulty.id);
       el.menuBest.textContent = highScore;
       el.menuModeName.textContent = `${state.mode.emoji} ${state.mode.name}`;
       el.menuModeBlurb.textContent = state.mode.blurb;
+
+      const info = extra || {};
+
+      // Daily banner: only meaningful in daily mode
+      const isDaily = Boolean(state.mode.daily);
+      if (el.menuDaily) el.menuDaily.hidden = !isDaily;
+      if (isDaily && info.daily && el.menuDailyDate) {
+        el.menuDailyDate.textContent = info.daily.best === null
+          ? info.daily.label
+          : `${info.daily.label} · your best ${info.daily.best}`;
+      }
+
+      // Difficulty is pinned for the daily board, so hide the choice
+      if (el.difficulties) el.difficulties.hidden = isDaily;
+
+      if (el.menuGhost) el.menuGhost.hidden = !info.hasGhost;
     }
 
     function syncThemeChips(themeId) {
