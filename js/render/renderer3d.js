@@ -201,6 +201,12 @@
     const wallMeshes = [];
     let baseMesh = null;
 
+    // Set when the active theme asks for the jungle world instead of the
+    // arcade board. Holds its own geometry, materials and textures.
+    let jungle = null;
+    let jungleSkin = null;
+    const worldOf = (t) => (t && t.world) || 'arcade';
+
     /*
      * The floor is real geometry, not a painted checker: two InstancedMeshes
      * of shallow boxes, one per checker parity. Their top faces sit at y = 0
@@ -213,6 +219,63 @@
     const TILE_RECESS = 0.05;
     let tilesLight = null;
     let tilesDark = null;
+
+    /** The neutral studio setup the arcade board is lit with. */
+    function applyArcadeLighting() {
+      hemi.color.set('#ffffff');
+      hemi.groundColor.set('#404060');
+      hemi.intensity = 0.85;
+      key.color.set('#ffffff');
+      key.intensity = 1.15;
+      key.position.set(grid * 0.5, grid * 1.3, grid * 0.55);
+      rim.color.set('#ffd9a0');
+      rim.intensity = 0.34;
+      foodGlow.intensity = 0.75;
+    }
+
+    /**
+     * Tear the arena down and build the other world. Only ever called when
+     * the theme actually changes world, since it rebuilds geometry.
+     */
+    function rebuildArena() {
+      for (let i = arena.children.length - 1; i >= 0; i -= 1) {
+        arena.remove(arena.children[i]);
+      }
+      if (jungle) {
+        jungle.dispose();
+        jungle = null;
+        jungleSkin = null;
+      }
+      wallMeshes.length = 0;
+      tilesLight = null;
+      tilesDark = null;
+      baseMesh = null;
+
+      if (worldOf(theme) !== 'jungle') applyArcadeLighting();
+      buildArena(theme);
+      builtWorld = worldOf(theme);
+    }
+
+    /** The material the body wears in the current world. */
+    function activeSkin() {
+      return jungleSkin || bodyMaterial;
+    }
+
+    /**
+     * Jungle light: a warm sun through the canopy plus a green bounce from
+     * the forest floor. The arcade world keeps its neutral studio setup.
+     */
+    function applyJungleLighting() {
+      hemi.color.set('#b9d69a');
+      hemi.groundColor.set('#2a2314');
+      hemi.intensity = 0.62;
+      key.color.set('#ffe6b0');
+      key.intensity = 1.5;
+      key.position.set(grid * 0.75, grid * 1.5, grid * 0.35);
+      rim.color.set('#6f9a4a');
+      rim.intensity = 0.42;
+      foodGlow.intensity = 0.35;
+    }
 
     /**
      * Build the checkerboard out of instanced boxes.
@@ -259,6 +322,15 @@
 
     function buildArena(theme) {
       const span = grid * CELL;
+
+      if (worldOf(theme) === 'jungle') {
+        jungle = NS.buildJungleWorld(THREE, {
+          scene, arena, grid, palette: theme, shadows, worldX, worldZ,
+        });
+        jungleSkin = jungle.makeSkin(theme);
+        applyJungleLighting();
+        return;
+      }
 
       buildFloorTiles(theme);
 
@@ -311,23 +383,47 @@
     const snakeGroup = new THREE.Group();
     scene.add(snakeGroup);
 
-    const segmentPool = [];
     let bodyMaterial = toon('#FFD23F');
     let bellyMaterial = toon('#FFF4CF');
 
-    function getSegment(index) {
-      if (segmentPool[index]) return segmentPool[index];
-      const mesh = new THREE.Mesh(geo.segment, bodyMaterial);
-      mesh.castShadow = shadows;
-      mesh.visible = false;
-      snakeGroup.add(mesh);
-      segmentPool[index] = mesh;
-      return mesh;
+    /*
+     * The body is ONE InstancedMesh rather than a mesh per segment, so a
+     * 60-cell snake costs a single draw call however long it grows.
+     *
+     * Its shape comes from a Catmull-Rom spline through the segment centres,
+     * sampled SAMPLES_PER_CELL times per cell. That is what rounds the corners:
+     * the simulation still moves on a hard grid, but the body sweeps through
+     * turns instead of hinging at right angles. Sample spacing is smaller than
+     * the body radius, so overlapping spheres read as a continuous tube.
+     */
+    const SAMPLES_PER_CELL = 3;
+    const MAX_BODY_INSTANCES = 1200;
+
+    const bodyMesh = new THREE.InstancedMesh(geo.segment, bodyMaterial, MAX_BODY_INSTANCES);
+    bodyMesh.castShadow = shadows;
+    bodyMesh.frustumCulled = false;
+    bodyMesh.count = 0;
+    snakeGroup.add(bodyMesh);
+
+    // Scratch, reused every frame so the layout loop allocates nothing
+    const bodyCurve = new THREE.CatmullRomCurve3([], false, 'catmullrom', 0.5);
+    const curvePoints = [];          // Vector3 pool for the spline controls
+    const sampleVec = new THREE.Vector3();
+    const bodyDummy = new THREE.Object3D();
+    let headYaw = 0;                 // smoothed, so turns ease rather than snap
+    let headTargetYaw = 0;           // written by the spline each frame
+    let headBank = 0;
+
+    /** A Vector3 from the pool, grown on demand and then reused forever. */
+    function curvePoint(index) {
+      if (!curvePoints[index]) curvePoints[index] = new THREE.Vector3();
+      return curvePoints[index];
     }
 
     // The head is a little rig: skull, two eyes, two pupils, a mouth and brows
     const head = new THREE.Group();
     const headSkull = new THREE.Mesh(geo.segment, bodyMaterial);
+    // Re-dressed in mount() once the world is known
     headSkull.castShadow = shadows;
     head.add(headSkull);
 
@@ -673,6 +769,7 @@
     let shake = 0;
     let deathTilt = 0;
     let built = false;
+    let builtWorld = 'arcade';
 
     function applyTheme(next) {
       theme = next;
@@ -685,6 +782,15 @@
       for (const pupil of pupils) pupil.material.color.set(theme.ink);
 
       if (!built) return;
+
+      // Switching between the arcade board and the jungle changes geometry,
+      // not just colour, so the whole arena is rebuilt for that case only.
+      if (worldOf(theme) !== builtWorld) {
+        rebuildArena();
+        headSkull.material = activeSkin();
+        bodyMesh.material = activeSkin();
+      }
+      if (builtWorld === 'jungle') return;   // jungle colours live in its textures
 
       // Tiles are geometry now, so a theme change is two material swaps
       if (tilesLight) tilesLight.material = toon(theme.board1);
@@ -704,95 +810,191 @@
      * Drawing one frame
      * ================================================================== */
 
+    /**
+     * Lay the body out along a spline through the segment centres.
+     *
+     * Returns the head position so the camera can follow it.
+     */
     function layoutSnake(state, alpha, now, face) {
       const count = state.snake.length;
+      let instance = 0;
 
-      // The head rig sits on segment 0; the pool draws the rest
-      for (let i = 0; i < segmentPool.length; i += 1) {
-        if (segmentPool[i]) segmentPool[i].visible = false;
-      }
-
+      // 1. Interpolated grid positions, split into runs wherever the snake
+      //    wrapped. Splining across a wrap would draw a body straight through
+      //    the middle of the board.
+      let runStart = 0;
       let headX = 0;
       let headZ = 0;
-      // Previous segment world positions, for the perpendicular sway
-      const trail = [];
 
-      for (let i = 0; i < count && i < MAX_SEGMENTS; i += 1) {
+      const gridAt = (i) => {
         const segment = state.snake[i];
         const previous = state.previousSnake[i] || segment;
         let px = previous.x;
         let py = previous.y;
-        // A wrap teleports a segment — snap rather than smear it across the board
         if (Math.abs(segment.x - px) > 1) px = segment.x;
         if (Math.abs(segment.y - py) > 1) py = segment.y;
+        return {
+          x: px + (segment.x - px) * alpha,
+          y: py + (segment.y - py) * alpha,
+        };
+      };
 
-        const gx = px + (segment.x - px) * alpha;
-        const gy = py + (segment.y - py) * alpha;
-        const x = worldX(gx);
-        const z = worldZ(gy);
-
-        // Taper from neck to tail
-        const along = count === 1 ? 0 : i / (count - 1);
+      /** Radius at a point `along` (0 = head, 1 = tail) down the whole body. */
+      function radiusAt(along) {
         let radius = 0.84 - Math.pow(along, 0.8) * 0.42;
-
-        // The swallow-bulge sliding down the body
         if (face.grow > 0) {
+          // The swallowed lump, travelling from the neck to the tail
           const bulgeAt = face.grow * (count + 2);
-          const distance = Math.abs(i - bulgeAt);
+          const distance = Math.abs(along * count - bulgeAt);
           if (distance < 2.2) {
             radius *= 1 + 0.42 * Math.cos((distance / 2.2) * (Math.PI / 2));
           }
         }
+        return radius * 0.5;
+      }
 
-        /*
-         * A travelling wave down the body. The vertical half is what sells
-         * the third dimension: segments lift off the floor and settle back,
-         * so the noodle rides over itself and drags its shadow with it.
-         * Lift is one-sided (the floor is solid, so it can only go up) and
-         * each segment rests at its own radius, which keeps the thin tail on
-         * the ground instead of floating.
-         */
-        const phase = now / 150 - i * 0.55;
-        const intensity = 0.45 + 0.55 * face.speed;
-        const lift = reduced ? 0
-          : (Math.sin(phase) * 0.5 + 0.5) * 0.3 * intensity;
-        const sway = reduced ? 0 : Math.sin(phase) * 0.1 * intensity;
-        const y = radius + lift;
+      /** Emit instanced spheres along one unbroken stretch of body. */
+      function emitRun(from, to) {
+        const length = to - from + 1;
+        if (length <= 0) return;
 
-        // Sway across the direction of travel, rather than always along z
-        let sideX = 0;
-        let sideZ = 0;
-        if (i > 0 && trail[i - 1]) {
-          const dx = trail[i - 1].x - x;
-          const dz = trail[i - 1].z - z;
-          const length = Math.hypot(dx, dz) || 1;
-          sideX = -dz / length;
-          sideZ = dx / length;
+        // A single orphaned segment still needs drawing
+        if (length === 1) {
+          const cell = gridAt(from);
+          const along = count === 1 ? 0 : from / (count - 1);
+          const radius = radiusAt(along);
+          if (instance < MAX_BODY_INSTANCES) {
+            bodyDummy.position.set(worldX(cell.x), radius, worldZ(cell.y));
+            bodyDummy.scale.setScalar(radius * 2);
+            bodyDummy.rotation.set(0, 0, 0);
+            bodyDummy.updateMatrix();
+            bodyMesh.setMatrixAt(instance, bodyDummy.matrix);
+            instance += 1;
+          }
+          return;
         }
-        trail[i] = { x, z };
 
-        if (i === 0) {
-          headX = x;
-          headZ = z;
-          head.position.set(x, y + 0.06, z);
-          headSkull.scale.setScalar(radius * 1.16);
-        } else {
-          const mesh = getSegment(i);
-          mesh.visible = true;
-          mesh.material = bodyMaterial;
-          mesh.position.set(x + sideX * sway, y, z + sideZ * sway);
-          mesh.scale.setScalar(radius);
+        // Spline control points for this run
+        for (let i = 0; i < length; i += 1) {
+          const cell = gridAt(from + i);
+          curvePoint(i).set(worldX(cell.x), 0, worldZ(cell.y));
+        }
+        bodyCurve.points = curvePoints;
+        curvePoints.length = length;      // trim without reallocating
+
+        const samples = Math.min(
+          (length - 1) * SAMPLES_PER_CELL + 1,
+          MAX_BODY_INSTANCES - instance
+        );
+
+        for (let sIndex = 0; sIndex < samples; sIndex += 1) {
+          const t = samples === 1 ? 0 : sIndex / (samples - 1);
+          bodyCurve.getPoint(t, sampleVec);
+
+          // Where this sample sits along the WHOLE snake, for taper and wave
+          const bodyIndex = from + t * (length - 1);
+          const along = count === 1 ? 0 : bodyIndex / (count - 1);
+          const radius = radiusAt(along);
+
+          /*
+           * A travelling wave. The vertical half is what sells the third
+           * dimension: the body lifts off the floor and settles back, so it
+           * rides over itself and drags its shadow with it. Lift is one-sided
+           * because the floor is solid, and each sample rests at its own
+           * radius so the thin tail stays on the ground.
+           */
+          const phase = now / 150 - bodyIndex * 0.55;
+          const intensity = 0.45 + 0.55 * face.speed;
+          const lift = reduced ? 0 : (Math.sin(phase) * 0.5 + 0.5) * 0.3 * intensity;
+          const sway = reduced ? 0 : Math.sin(phase) * 0.12 * intensity;
+
+          // Sway runs across the spline, so it reads as slither at any heading
+          let sideX = 0;
+          let sideZ = 0;
+          if (samples > 1) {
+            const ahead = Math.min(t + 0.02, 1);
+            const behind = Math.max(t - 0.02, 0);
+            bodyCurve.getPoint(ahead, bodyDummy.position);
+            const ax = bodyDummy.position.x;
+            const az = bodyDummy.position.z;
+            bodyCurve.getPoint(behind, bodyDummy.position);
+            const dx = ax - bodyDummy.position.x;
+            const dz = az - bodyDummy.position.z;
+            const len = Math.hypot(dx, dz) || 1;
+            sideX = -dz / len;
+            sideZ = dx / len;
+
+            if (from === 0 && sIndex === 0) {
+              // The head faces along the spline, not along the grid — which is
+              // what makes a corner look like a turn instead of a snap.
+              headTargetYaw = Math.atan2(dx, dz);
+            }
+          }
+
+          if (from === 0 && sIndex === 0) {
+            headX = sampleVec.x;
+            headZ = sampleVec.z;
+          }
+
+          if (instance >= MAX_BODY_INSTANCES) break;
+          bodyDummy.position.set(
+            sampleVec.x + sideX * sway,
+            radius + lift,
+            sampleVec.z + sideZ * sway
+          );
+          bodyDummy.scale.setScalar(radius * 2);
+          bodyDummy.rotation.set(0, 0, 0);
+          bodyDummy.updateMatrix();
+          bodyMesh.setMatrixAt(instance, bodyDummy.matrix);
+          instance += 1;
         }
       }
+
+      // 2. Walk the body, breaking a run wherever it wrapped
+      for (let i = 1; i <= count; i += 1) {
+        const wrapped = i < count && (() => {
+          const a = state.snake[i - 1];
+          const b = state.snake[i];
+          return Math.abs(a.x - b.x) > 1 || Math.abs(a.y - b.y) > 1;
+        })();
+        if (i === count || wrapped) {
+          emitRun(runStart, i - 1);
+          runStart = i;
+        }
+      }
+
+      bodyMesh.count = instance;
+      bodyMesh.instanceMatrix.needsUpdate = true;
+
+      // 3. The head rides on top of the first sample
+      const headAlong = 0;
+      const headRadius = radiusAt(headAlong);
+      const headPhase = now / 150;
+      const headLift = reduced ? 0
+        : (Math.sin(headPhase) * 0.5 + 0.5) * 0.3 * (0.45 + 0.55 * face.speed);
+      head.position.set(headX, headRadius + headLift + 0.06, headZ);
+      headSkull.scale.setScalar(headRadius * 2.32);
 
       return { x: headX, z: headZ };
     }
 
     function layoutFace(face, now) {
       const dir = face.dir || { x: 1, y: 0 };
-      // Face the direction of travel; z is "down" on the grid
-      const yaw = Math.atan2(dir.x, dir.y);
-      head.rotation.y = yaw;
+
+      /*
+       * The head aims along the body spline rather than snapping to one of
+       * four grid headings, and eases toward it — so a corner reads as the
+       * snake turning rather than the model rotating. How fast it is still
+       * turning drives a bank, the way a real animal leans into a corner.
+       */
+      let delta = headTargetYaw - headYaw;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      const ease = reduced ? 1 : 0.25;
+      headYaw += delta * ease;
+      headBank += (clamp(-delta * 1.6, -0.45, 0.45) - headBank) * 0.2;
+
+      head.rotation.set(0, headYaw, reduced ? 0 : headBank);
 
       const dead = face.dead;
       const r = headSkull.scale.x * 0.5;
@@ -963,6 +1165,9 @@
       mount() {
         if (built) return;
         buildArena(theme);
+        builtWorld = worldOf(theme);
+        headSkull.material = activeSkin();
+        bodyMesh.material = activeSkin();
         applyTheme(theme);
         built = true;
       },
@@ -1065,6 +1270,7 @@
         materialCache.clear();
         if (tilesLight) tilesLight.dispose();
         if (tilesDark) tilesDark.dispose();
+        if (jungle) jungle.dispose();
         ghostMaterial.dispose();
         particleGeometry.dispose();
         particleMaterial.dispose();

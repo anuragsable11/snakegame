@@ -42,7 +42,7 @@
     let lastReplay = null;
 
     let renderer = null;
-    let theme = NS.THEMES[storage.read(KEYS.THEME, 'noodle')] || NS.THEMES.noodle;
+    let theme = NS.THEMES[storage.read(KEYS.THEME, 'jungle')] || NS.THEMES.noodle;
     let highScore = 0;
     let lastFrameTime = 0;
     let boardSize = 0;

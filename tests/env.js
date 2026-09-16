@@ -244,7 +244,7 @@ function makeSandbox({ store, counts, webgl, clock, rafQueue, timers }) {
   }
 
   const dpad = group('dpad', ['up', 'left', 'down', 'right'], 'direction');
-  const themes = group('themes', ['noodle', 'spicy', 'dessert', 'alien'], 'theme');
+  const themes = group('themes', ['jungle', 'noodle', 'spicy', 'dessert', 'alien'], 'theme');
   const modes = group('modes', ['classic', 'timeattack', 'survival', 'endless', 'daily'], 'value');
   const difficulties = group('difficulties', ['easy', 'normal', 'hard'], 'value');
   const controls = new FakeElement('DIV');

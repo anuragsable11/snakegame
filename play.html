@@ -204,7 +204,10 @@
 
         <!-- ------------------------- Theme picker ------------------------- -->
         <div class="themes" role="group" aria-label="Pick a theme">
-          <button type="button" class="theme-btn is-active" data-theme="noodle" aria-pressed="true" aria-label="Hungry Noodle theme">
+          <button type="button" class="theme-btn is-active" data-theme="jungle" aria-pressed="true" aria-label="Jungle theme">
+            <span class="theme-btn__emoji" aria-hidden="true">🌿</span><span class="theme-btn__name">Jungle</span>
+          </button>
+          <button type="button" class="theme-btn" data-theme="noodle" aria-pressed="false" aria-label="Hungry Noodle theme">
             <span class="theme-btn__emoji" aria-hidden="true">🍜</span><span class="theme-btn__name">Noodle</span>
           </button>
           <button type="button" class="theme-btn" data-theme="spicy" aria-pressed="false" aria-label="Spicy Noodle theme">
@@ -297,6 +300,7 @@
   <script src="js/core/persistence.js"></script>
   <script src="js/render/face.js"></script>
   <script src="js/render/renderer2d.js"></script>
+  <script src="js/render/jungle.js"></script>
   <script src="js/render/renderer3d.js"></script>
   <script src="js/orientation.js"></script>
   <script src="js/ui.js"></script>

@@ -398,7 +398,7 @@ drawProbe('backdrop:motion', (c) => g.ns.drawBackdropMotion(c, 640, 1000, theme)
 section('themes: palettes and contrast');
 const PALETTE_KEYS = ['ink', 'body', 'bodyDark', 'bodyLight', 'belly', 'cheek', 'tongue',
   'board1', 'board2', 'tile', 'accent', 'accent2', 'crumb'];
-check('four themes', Object.keys(g.ns.THEMES).length === 4, Object.keys(g.ns.THEMES).join(', '));
+check('five themes', Object.keys(g.ns.THEMES).length === 5, Object.keys(g.ns.THEMES).join(', '));
 for (const id of Object.keys(g.ns.THEMES)) {
   const missing = PALETTE_KEYS.filter((k) => !g.ns.THEMES[id][k]);
   check(`theme ${id} has every palette key`, missing.length === 0, missing.join(', '));
@@ -677,7 +677,10 @@ section('3D resources are shared');
   const src = fs.readFileSync(path.join(PROJECT, 'js/render/renderer3d.js'), 'utf8');
   check('geometries are built once in a table', /const geo = \{/.test(src));
   check('materials are cached', /materialCache/.test(src));
-  check('segments come from a pool', /segmentPool/.test(src));
+  check('the whole body is one instanced draw call',
+    /new THREE\.InstancedMesh\(geo\.segment, bodyMaterial, MAX_BODY_INSTANCES\)/.test(src));
+  check('the old per-segment pool is gone', !/segmentPool/.test(src));
+  check('the instance count is capped', /MAX_BODY_INSTANCES = \d+/.test(src));
   check('particles are a fixed-size buffer', /MAX_PARTICLES/.test(src));
   check('dispose releases geometries and materials',
     /dispose\(\)/.test(src) && /materialCache\.forEach/.test(src));
@@ -1962,10 +1965,19 @@ section('3D: the noodle undulates vertically');
   check('segments lift off the floor', /const lift = reduced \? 0/.test(code));
   check('lift is one-sided, so nothing sinks through the floor',
     /Math\.sin\(phase\) \* 0\.5 \+ 0\.5/.test(code));
-  check('each segment rests at its own radius',
-    /const y = radius \+ lift;/.test(code));
-  check('sway is perpendicular to travel, not fixed to one axis',
-    /sideX = -dz \/ length/.test(code) && /sideZ = dx \/ length/.test(code));
+  check('each sample rests at its own radius',
+    /radius \+ lift,/.test(code));
+  check('sway is perpendicular to the spline, not fixed to one axis',
+    /sideX = -dz \/ len/.test(code) && /sideZ = dx \/ len/.test(code));
+  check('the body follows a spline, so corners round off',
+    /new THREE\.CatmullRomCurve3/.test(code));
+  check('and is sampled more finely than the grid',
+    /SAMPLES_PER_CELL = [2-9]/.test(code));
+  check('a wrap breaks the spline instead of drawing across the board',
+    /emitRun\(runStart, i - 1\)/.test(code));
+  check('the head eases toward the spline heading rather than snapping',
+    /headYaw \+= delta \* ease/.test(code));
+  check('and banks into the turn', /headBank \+=/.test(code));
   check('the old always-along-z wobble is gone', !/z \+ wobble \* 0\.15/.test(code));
   check('reduced motion flattens it', /const lift = reduced \? 0/.test(code) &&
     /const sway = reduced \? 0/.test(code));
@@ -2097,6 +2109,161 @@ section('mobile: the landscape nudge');
     return app.store.get('noodle.rotateHint.v1') === 'true';
   })());
 }
+
+
+/* ========================================================================== *
+ * K. The jungle world
+ * ========================================================================== */
+
+section('jungle: the theme');
+{
+  const themes = pure.NS ? null : null;
+  const app = boot({ store: new Map() });
+  const T = app.ns.THEMES;
+
+  check('a jungle theme exists', Boolean(T.jungle));
+  check('it declares a world', T.jungle.world === 'jungle', String(T.jungle.world));
+  check('the arcade themes do not', ['noodle', 'spicy', 'dessert', 'alien']
+    .every((id) => T[id].world === undefined));
+  check('it still has every palette key', ['ink', 'body', 'bodyDark', 'bodyLight',
+    'belly', 'cheek', 'tongue', 'board1', 'board2', 'tile', 'accent', 'accent2', 'crumb']
+    .every((k) => Boolean(T.jungle[k])));
+  check('it has a name and emoji', Boolean(T.jungle.name) && Boolean(T.jungle.emoji));
+
+  // Snake-vs-ground contrast still has to clear the accessibility floor
+  function luminance(hex) {
+    const raw = String(hex).replace('#', '');
+    const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+    const [r, gg, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255);
+    const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    return 0.2126 * lin(r) + 0.7152 * lin(gg) + 0.0722 * lin(b);
+  }
+  const l1 = luminance(T.jungle.body);
+  const l2 = luminance(T.jungle.board1);
+  const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  check('the snake reads against the forest floor', ratio >= 1.9, ratio.toFixed(2));
+
+  check('it is the default theme', app.body.dataset.theme === 'jungle',
+    app.body.dataset.theme);
+  check('and has a picker chip', (() => {
+    const html = fs.readFileSync(path.join(PROJECT, 'play.html'), 'utf8');
+    return /data-theme="jungle"/.test(html) && /Jungle theme/.test(html);
+  })());
+}
+
+section('jungle: it builds a real scene');
+{
+  const app = boot({ webgl: true, withThree: true, store: new Map() });
+  check('the 3D renderer started', app.game().renderer.id === '3d', app.game().renderer.id);
+  check('it started in the jungle', app.body.dataset.theme === 'jungle');
+
+  app.click('btn-play');
+  const before = app.counts.glRenders || 0;
+  app.frame(16);
+  check('the jungle renders', (app.counts.glRenders || 0) > before);
+
+  let crashed = null;
+  try { for (let i = 0; i < 240; i += 1) app.frame(16); } catch (e) { crashed = e; }
+  check('240 jungle frames without throwing', !crashed, crashed && crashed.stack);
+
+  // Switching worlds rebuilds geometry; switching palettes must not
+  let swapError = null;
+  try {
+    app.pick('themes', 'noodle');       // jungle -> arcade
+    app.frame(16);
+    app.pick('themes', 'spicy');        // arcade -> arcade
+    app.frame(16);
+    app.pick('themes', 'jungle');       // arcade -> jungle
+    app.frame(16);
+    app.pick('themes', 'alien');        // jungle -> arcade
+    app.frame(16);
+  } catch (e) { swapError = e; }
+  check('switching in and out of the jungle does not throw', !swapError,
+    swapError && swapError.stack);
+  check('the game survived the swaps', app.game().renderer.id === '3d');
+
+  app.pick('themes', 'jungle');
+  for (let i = 0; i < 60; i += 1) app.frame(16);
+  check('still playable after returning to the jungle',
+    app.state() === 'PLAYING' || app.state() === 'GAME_OVER', app.state());
+}
+
+section('jungle: how it is built');
+{
+  const code = codeOf('js/render/jungle.js');
+  const renderer = codeOf('js/render/renderer3d.js');
+
+  check('the world lives in its own module',
+    fs.existsSync(path.join(PROJECT, 'js/render/jungle.js')));
+  check('both pages load it', (() => {
+    return ['play.html', 'index.html'].every((page) =>
+      /src="js\/render\/jungle\.js"/.test(
+        fs.readFileSync(path.join(PROJECT, page), 'utf8')));
+  })());
+  check('it is loaded before the renderer that uses it', (() => {
+    const html = fs.readFileSync(path.join(PROJECT, 'play.html'), 'utf8');
+    return html.indexOf('js/render/jungle.js') < html.indexOf('js/render/renderer3d.js');
+  })());
+
+  // Everything is generated, nothing is downloaded
+  check('no image files are referenced', !/\.(png|jpg|jpeg|webp|gltf|glb|hdr)/i.test(code));
+  check('textures are painted onto a canvas', /createElement\('canvas'\)/.test(code));
+  check('and turned into CanvasTextures', /new THREE\.CanvasTexture/.test(code));
+  check('the layout is deterministic, not random per load',
+    /function seeded\(/.test(code) && !/Math\.random\(\)/.test(code));
+
+  // Performance rules the rest of the renderer already follows
+  check('scenery is instanced', (code.match(/new THREE\.InstancedMesh/g) || []).length >= 4,
+    String((code.match(/new THREE\.InstancedMesh/g) || []).length));
+  check('instance matrices are uploaded once',
+    (code.match(/instanceMatrix\.needsUpdate/g) || []).length >= 4);
+  check('it exposes no per-frame work', !/function update\(/.test(code));
+  check('every geometry, material and texture is tracked for disposal',
+    /geometries\.push/.test(code) && /materials\.push/.test(code) && /textures\.push/.test(code));
+  check('dispose releases all three', /for \(const item of geometries\) item\.dispose\(\)/.test(code) &&
+    /for \(const item of materials\) item\.dispose\(\)/.test(code) &&
+    /for \(const item of textures\) item\.dispose\(\)/.test(code));
+
+  // It must not reach into the game
+  check('the jungle knows nothing about the engine',
+    !/createEngine|engine\.|queueTurn/.test(code));
+  check('nor about the DOM beyond making canvases',
+    !/getElementById|querySelector|addEventListener/.test(code));
+
+  // The renderer side
+  check('the renderer branches on the world', /worldOf\(theme\) === 'jungle'/.test(renderer));
+  check('a world change rebuilds, a palette change does not',
+    /function rebuildArena\(\)/.test(renderer) &&
+    /if \(worldOf\(theme\) !== builtWorld\)/.test(renderer));
+  check('arcade lighting is restored when leaving the jungle',
+    /function applyArcadeLighting\(\)/.test(renderer));
+  check('the body wears the world-appropriate skin',
+    /function activeSkin\(\)/.test(renderer) &&
+    /bodyMesh\.material = activeSkin\(\)/.test(renderer));
+  check('the jungle is disposed with the renderer',
+    /if \(jungle\) jungle\.dispose\(\)/.test(renderer));
+  check('the arcade board is still there for other themes',
+    /function buildFloorTiles\(/.test(renderer));
+}
+
+section('jungle: the 2D fallback is unaffected');
+{
+  // The Canvas renderer has no notion of worlds; it must still take the theme
+  const app = boot({ store: new Map() });     // no WebGL -> 2D
+  check('2D is in use', app.game().renderer.id === '2d', app.game().renderer.id);
+  check('with the jungle palette', app.body.dataset.theme === 'jungle');
+
+  app.click('btn-play');
+  let error = null;
+  try { for (let i = 0; i < 120; i += 1) app.frame(16); } catch (e) { error = e; }
+  check('2D renders the jungle palette without throwing', !error, error && error.message);
+  check('canvas save/restore still balanced', (app.counts.__depth || 0) === 0,
+    String(app.counts.__depth));
+
+  const r2d = codeOf('js/render/renderer2d.js');
+  check('the 2D renderer never mentions the jungle', !/jungle/i.test(r2d));
+}
+
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 if (failures) console.log(failedNames.map((f) => `  - ${f}`).join('\n'));

@@ -20,6 +20,30 @@
    *   crumb      generic particle colour
    */
   NS.THEMES = {
+    /*
+     * The jungle is a different WORLD, not just a palette: the 3D renderer
+     * swaps the arena for a forest floor and dresses the snake in scaled
+     * skin. Themes without a `world` get the original arcade board.
+     */
+    jungle: {
+      id: 'jungle',
+      name: 'Jungle',
+      emoji: '🌿',
+      world: 'jungle',
+      ink: '#10180b',
+      body: '#5f7a34',
+      bodyDark: '#2f3d18',
+      bodyLight: '#8fa855',
+      belly: '#c9c08a',
+      cheek: '#7a8f45',
+      tongue: '#8e2b3a',
+      board1: '#2e2415',
+      board2: '#1b2b14',
+      tile: 'rgba(120, 150, 80, 0.05)',
+      accent: '#c8a94a',
+      accent2: '#7fa64b',
+      crumb: '#8fa855',
+    },
     noodle: {
       id: 'noodle',
       name: 'Hungry Noodle',

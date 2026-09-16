@@ -99,7 +99,7 @@
 
     const engine = NS.createEngine({ mode: 'classic', difficulty: 'normal' });
     const banter = NS.createBanter();
-    const theme = NS.THEMES[storage.read(NS.STORAGE_KEYS.THEME, 'noodle')] || NS.THEMES.noodle;
+    const theme = NS.THEMES[storage.read(NS.STORAGE_KEYS.THEME, 'jungle')] || NS.THEMES.noodle;
 
     let renderer = null;
     let rendererId = '2d';
