@@ -52,6 +52,11 @@
     const lowPower = window.matchMedia('(pointer: coarse)').matches &&
       window.innerWidth <= 640;
 
+    // A small viewport keeps the higher camera angle: the board is already
+    // physically small there, so trading board area for perspective is a bad
+    // deal. Read once at boot — a mid-session rotate keeps the same framing.
+    const compact = window.innerWidth <= 900;
+
     const webglOK = NS.isWebGLAvailable() && !!window.THREE;
     // Honour the stored preference, but never promise 3D we can't deliver
     let rendererId = webglOK ? storage.read(KEYS.RENDERER, '3d') : '2d';
@@ -101,7 +106,7 @@
     function createRenderer(id) {
       const canvas = ui.el.canvas;
       if (id === '3d') {
-        const made = NS.createRenderer3D(canvas, { reduced, lowPower });
+        const made = NS.createRenderer3D(canvas, { reduced, lowPower, compact });
         made.mount();
         return made;
       }
@@ -487,6 +492,9 @@
 
     document.body.dataset.theme = theme.id;
     ui.bind();
+
+    // Phones play better sideways; this asks, it never blocks
+    if (NS.createOrientationNudge) NS.createOrientationNudge();
     ui.syncSound(audio.isMuted());
     ui.syncThemeChips(theme.id);
 

@@ -49,6 +49,8 @@
     // Small touch screens: keep the look, drop the expensive parts
     const lowPower = opts.lowPower || false;
     const shadows = !reduced && !lowPower;
+    // Small viewports keep a higher, safer camera angle
+    const compact = opts.compact || false;
     const grid = NS.CONFIG.GRID_SIZE;
     const half = (grid - 1) / 2;
 
@@ -68,11 +70,34 @@
     if ('outputEncoding' in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 120);
 
-    // A gently elevated arcade view — enough tilt to read as 3D, flat enough
-    // that the grid is still legible.
-    const CAMERA_HOME = new THREE.Vector3(0, grid * 1.02, grid * 0.82);
+    /*
+     * Camera framing.
+     *
+     * A square board seen at an angle foreshortens, so the lower the camera
+     * the more perspective you get and the less of the frame the board fills.
+     * These numbers are the closest camera that still frames the whole board
+     * with 1.6 cells of horizontal slack — enough for the follow drift.
+     *
+     *   desktop  42 deg / 60 fov -> a near cell looks 1.72x a far one
+     *   compact  46 deg / 58 fov -> 1.64x, keeping more board on screen
+     *
+     * For comparison the previous framing managed 1.56x and, more to the
+     * point, had NEGATIVE horizontal slack: the near edge of the board was
+     * being clipped, and the follow drift made it worse.
+     */
+    const ELEVATION_DEG = compact ? 46 : 42;
+    const FIELD_OF_VIEW = compact ? 58 : 60;
+    const CAMERA_DISTANCE = grid * (compact ? 1.33 : 1.319);
+
+    const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.5, 140);
+
+    const elevation = (ELEVATION_DEG * Math.PI) / 180;
+    const CAMERA_HOME = new THREE.Vector3(
+      0,
+      CAMERA_DISTANCE * Math.sin(elevation),
+      CAMERA_DISTANCE * Math.cos(elevation)
+    );
     camera.position.copy(CAMERA_HOME);
     camera.lookAt(0, 0, 0);
 
@@ -173,57 +198,69 @@
     const arena = new THREE.Group();
     scene.add(arena);
 
-    let boardTexture = null;
-    let floorMaterial = null;
     const wallMeshes = [];
     let baseMesh = null;
-    let floorMesh = null;
 
-    /** The checker floor is a small canvas texture, generated from the theme. */
-    function buildBoardTexture(theme) {
-      const size = 512;
-      const cellPx = size / grid;
-      const source = document.createElement('canvas');
-      source.width = size;
-      source.height = size;
-      const c = source.getContext('2d');
+    /*
+     * The floor is real geometry, not a painted checker: two InstancedMeshes
+     * of shallow boxes, one per checker parity. Their top faces sit at y = 0
+     * and y = -0.05, so the darker squares are physically recessed and the
+     * gap between tiles reads as a groove. Two draw calls for 400 tiles, and
+     * it catches the shadow the noodle casts as it undulates.
+     */
+    const TILE_GAP = 0.05;
+    const TILE_DEPTH = 0.6;
+    const TILE_RECESS = 0.05;
+    let tilesLight = null;
+    let tilesDark = null;
 
-      c.fillStyle = theme.board1;
-      c.fillRect(0, 0, size, size);
-      c.fillStyle = theme.board2;
+    /**
+     * Build the checkerboard out of instanced boxes.
+     *
+     * Tops sit at y = 0 (light) and y = -TILE_RECESS (dark), so everything
+     * above the floor keeps the coordinates it already had.
+     */
+    function buildFloorTiles(palette) {
+      const dummy = new THREE.Object3D();
+      const half = grid / 2;
+      const counts = { light: 0, dark: 0 };
       for (let y = 0; y < grid; y += 1) {
         for (let x = 0; x < grid; x += 1) {
-          if ((x + y) % 2 === 0) c.fillRect(x * cellPx, y * cellPx, cellPx, cellPx);
+          if ((x + y) % 2 === 0) counts.light += 1;
+          else counts.dark += 1;
         }
       }
-      // Faint grid lines on top, so the playfield is readable at a glance
-      c.strokeStyle = 'rgba(255,255,255,0.07)';
-      c.lineWidth = 1;
-      for (let i = 1; i < grid; i += 1) {
-        c.beginPath();
-        c.moveTo(i * cellPx, 0);
-        c.lineTo(i * cellPx, size);
-        c.moveTo(0, i * cellPx);
-        c.lineTo(size, i * cellPx);
-        c.stroke();
+
+      tilesLight = new THREE.InstancedMesh(geo.slab, toon(palette.board1), counts.light);
+      tilesDark = new THREE.InstancedMesh(geo.slab, toon(palette.board2), counts.dark);
+      for (const tiles of [tilesLight, tilesDark]) {
+        tiles.castShadow = false;
+        tiles.receiveShadow = shadows;
+        arena.add(tiles);
       }
 
-      const texture = new THREE.CanvasTexture(source);
-      texture.anisotropy = 4;
-      if ('encoding' in texture) texture.encoding = THREE.sRGBEncoding;
-      return texture;
+      const size = CELL - TILE_GAP;
+      let lightAt = 0;
+      let darkAt = 0;
+      for (let y = 0; y < grid; y += 1) {
+        for (let x = 0; x < grid; x += 1) {
+          const light = (x + y) % 2 === 0;
+          const top = light ? 0 : -TILE_RECESS;
+          dummy.position.set(worldX(x), top - TILE_DEPTH / 2, worldZ(y));
+          dummy.scale.set(size, TILE_DEPTH, size);
+          dummy.updateMatrix();
+          if (light) tilesLight.setMatrixAt(lightAt++, dummy.matrix);
+          else tilesDark.setMatrixAt(darkAt++, dummy.matrix);
+        }
+      }
+      tilesLight.instanceMatrix.needsUpdate = true;
+      tilesDark.instanceMatrix.needsUpdate = true;
     }
 
     function buildArena(theme) {
       const span = grid * CELL;
 
-      boardTexture = buildBoardTexture(theme);
-      floorMaterial = new THREE.MeshToonMaterial({ map: boardTexture });
-
-      floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(span, span), floorMaterial);
-      floorMesh.rotation.x = -Math.PI / 2;
-      floorMesh.receiveShadow = shadows;
-      arena.add(floorMesh);
+      buildFloorTiles(theme);
 
       // A thick slab underneath so the arena reads as a solid object
       baseMesh = new THREE.Mesh(geo.slab, toon(theme.board2));
@@ -649,12 +686,9 @@
 
       if (!built) return;
 
-      // Rebuild just the floor texture; everything else is a colour swap
-      const nextTexture = buildBoardTexture(theme);
-      floorMaterial.map = nextTexture;
-      floorMaterial.needsUpdate = true;
-      if (boardTexture) boardTexture.dispose();
-      boardTexture = nextTexture;
+      // Tiles are geometry now, so a theme change is two material swaps
+      if (tilesLight) tilesLight.material = toon(theme.board1);
+      if (tilesDark) tilesDark.material = toon(theme.board2);
 
       baseMesh.material = toon(theme.board2);
       const wallMaterial = toon(theme.accent);
@@ -680,6 +714,8 @@
 
       let headX = 0;
       let headZ = 0;
+      // Previous segment world positions, for the perpendicular sway
+      const trail = [];
 
       for (let i = 0; i < count && i < MAX_SEGMENTS; i += 1) {
         const segment = state.snake[i];
@@ -708,10 +744,32 @@
           }
         }
 
-        // A gentle travelling ripple, stronger the faster you are going
-        const wobble = reduced ? 0
-          : Math.sin(now / 150 - i * 0.55) * 0.09 * (0.4 + 0.6 * face.speed);
-        const y = 0.5 + Math.abs(wobble) * 0.6;
+        /*
+         * A travelling wave down the body. The vertical half is what sells
+         * the third dimension: segments lift off the floor and settle back,
+         * so the noodle rides over itself and drags its shadow with it.
+         * Lift is one-sided (the floor is solid, so it can only go up) and
+         * each segment rests at its own radius, which keeps the thin tail on
+         * the ground instead of floating.
+         */
+        const phase = now / 150 - i * 0.55;
+        const intensity = 0.45 + 0.55 * face.speed;
+        const lift = reduced ? 0
+          : (Math.sin(phase) * 0.5 + 0.5) * 0.3 * intensity;
+        const sway = reduced ? 0 : Math.sin(phase) * 0.1 * intensity;
+        const y = radius + lift;
+
+        // Sway across the direction of travel, rather than always along z
+        let sideX = 0;
+        let sideZ = 0;
+        if (i > 0 && trail[i - 1]) {
+          const dx = trail[i - 1].x - x;
+          const dz = trail[i - 1].z - z;
+          const length = Math.hypot(dx, dz) || 1;
+          sideX = -dz / length;
+          sideZ = dx / length;
+        }
+        trail[i] = { x, z };
 
         if (i === 0) {
           headX = x;
@@ -722,7 +780,7 @@
           const mesh = getSegment(i);
           mesh.visible = true;
           mesh.material = bodyMaterial;
-          mesh.position.set(x, y, z + wobble * 0.15);
+          mesh.position.set(x + sideX * sway, y, z + sideZ * sway);
           mesh.scale.setScalar(radius);
         }
       }
@@ -870,7 +928,9 @@
     function updateCamera(headPosition, deltaMs, state) {
       // A gentle follow: the camera drifts toward the noodle without ever
       // losing the whole arena. Deliberately subtle — no motion sickness.
-      const follow = reduced ? 0 : 0.22;
+      // Kept small on purpose: at a lower camera angle the drift reads much
+      // more strongly, and it has to stay inside the framing margin.
+      const follow = reduced ? 0 : 0.15;
       desiredTarget.set(headPosition.x * follow, 0, headPosition.z * follow);
       desiredPosition.copy(CAMERA_HOME);
       desiredPosition.x += headPosition.x * follow * 0.6;
@@ -1003,8 +1063,8 @@
         for (const key of Object.keys(geo)) geo[key].dispose();
         materialCache.forEach((material) => material.dispose());
         materialCache.clear();
-        if (boardTexture) boardTexture.dispose();
-        if (floorMaterial) floorMaterial.dispose();
+        if (tilesLight) tilesLight.dispose();
+        if (tilesDark) tilesDark.dispose();
         ghostMaterial.dispose();
         particleGeometry.dispose();
         particleMaterial.dispose();

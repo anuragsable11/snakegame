@@ -53,6 +53,21 @@
           </div>
         </div>
 
+        <!--
+          Phones play much better in landscape: the board is sized by height
+          there, so the board and the d-pad sit side by side instead of
+          fighting for vertical space. A tab cannot force rotation, so this
+          asks, and offers fullscreen (where the orientation lock works).
+        -->
+        <div class="rotate-hint" id="rotate-hint" hidden>
+          <span class="rotate-hint__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2m0 2v14h10V5z" /></svg>
+          </span>
+          <span class="rotate-hint__text">Turn your phone sideways — board and controls both fit on screen.</span>
+          <button type="button" class="rotate-hint__go" id="btn-fullscreen">Go landscape</button>
+          <button type="button" class="rotate-hint__close" id="btn-rotate-dismiss" aria-label="Dismiss this tip">&times;</button>
+        </div>
+
         <div class="board" id="board-wrap">
           <canvas id="board" role="img"
                   aria-label="Hungry Noodle board. Steer with the arrow keys or W A S D."></canvas>
@@ -283,6 +298,7 @@
   <script src="js/render/face.js"></script>
   <script src="js/render/renderer2d.js"></script>
   <script src="js/render/renderer3d.js"></script>
+  <script src="js/orientation.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
 </body>

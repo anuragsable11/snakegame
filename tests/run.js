@@ -1814,7 +1814,8 @@ section('mobile: 3D is cheaper on small touch screens');
   const mainCode = codeOf('js/main.js');
   check('main.js detects coarse pointers', /pointer: coarse/.test(mainCode));
   check('and only applies it to small screens', /innerWidth <= 640/.test(mainCode));
-  check('the hint reaches the 3D renderer', /createRenderer3D\(canvas, \{ reduced, lowPower \}\)/.test(mainCode));
+  check('the hints reach the 3D renderer',
+    /createRenderer3D\(canvas, \{ reduced, lowPower, compact \}\)/.test(mainCode));
 
   // It must still build a working scene with the hint on
   const low = boot({ webgl: true, withThree: true, store: new Map() });
@@ -1857,6 +1858,245 @@ section('mobile: the game is playable with touch alone');
   check('the d-pad is disabled after game over', pad.every((b) => b.disabled === true));
 }
 
+
+
+/* ========================================================================== *
+ * J. 3D depth pass — camera framing, vertical undulation, instanced floor
+ * ========================================================================== */
+
+section('3D: camera framing');
+{
+  const code = codeOf('js/render/renderer3d.js');
+
+  check('the camera angle is derived, not hardcoded',
+    /ELEVATION_DEG/.test(code) && /Math\.sin\(elevation\)/.test(code));
+  check('small viewports keep a higher angle',
+    /const ELEVATION_DEG = compact \? 46 : 42;/.test(code));
+  check('and a wider lens than before', /const FIELD_OF_VIEW = compact \? 58 : 60;/.test(code));
+  check('the far plane grew with the distance', /0\.5, 140\)/.test(code));
+  check('the follow drift was reduced for the lower angle',
+    /const follow = reduced \? 0 : 0\.15;/.test(code));
+
+  /*
+   * The framing has to survive the follow drift. Recompute it here from the
+   * same numbers the renderer uses: if someone lowers the camera further
+   * without re-checking, the board would slide out of frame.
+   */
+  function framing(elevationDeg, fovDeg, distanceFactor) {
+    const grid = 20;
+    const half = grid / 2;
+    const e = (elevationDeg * Math.PI) / 180;
+    const d = grid * distanceFactor;
+    const cam = { y: d * Math.sin(e), z: d * Math.cos(e) };
+    const halfFov = (fovDeg / 2) * Math.PI / 180;
+
+    // Widest thing in frame is the near edge of the board
+    const rNear = Math.hypot(cam.y, half - cam.z);
+    const halfWidthVisible = rNear * Math.tan(halfFov);
+
+    const angle = (vy, vz) => Math.atan2(vy, -vz);
+    const vertical = Math.abs(
+      angle(-cam.y, -half - cam.z) - angle(-cam.y, half - cam.z)
+    );
+
+    const nearDist = Math.hypot(cam.y, half - cam.z);
+    const farDist = Math.hypot(cam.y, -half - cam.z);
+
+    return {
+      horizontalSlack: halfWidthVisible - half,
+      verticalSlack: (2 * halfFov - vertical) * 180 / Math.PI,
+      perspective: farDist / nearDist,
+      fill: (vertical / (2 * halfFov)) * 100,
+    };
+  }
+
+  // The follow moves the look-at point by up to 0.15 * 10 cells
+  const FOLLOW_DRIFT = 1.6;
+
+  for (const [label, elev, fov, dist] of [
+    ['desktop', 42, 60, 1.319],
+    ['compact', 46, 58, 1.33],
+  ]) {
+    const f = framing(elev, fov, dist);
+    check(`${label}: the board fits horizontally with room for the follow`,
+      f.horizontalSlack >= FOLLOW_DRIFT,
+      `${f.horizontalSlack.toFixed(2)} cells of slack, need ${FOLLOW_DRIFT}`);
+    check(`${label}: the board fits vertically`, f.verticalSlack > 0,
+      `${f.verticalSlack.toFixed(1)}deg spare`);
+    check(`${label}: the board still fills a useful share of the frame`,
+      f.fill >= 45, `${f.fill.toFixed(0)}%`);
+  }
+
+  /*
+   * The previous framing (51.2 deg / 46 fov at grid*1.308) had NEGATIVE
+   * horizontal slack: the near edge of the board was clipped, and the
+   * follow drift pushed it further out. Both of those are fixed here, and
+   * the new framing is measurably deeper as well.
+   */
+  const before = framing(51.2, 46, Math.hypot(1.02, 0.82));
+  const desktop = framing(42, 60, 1.319);
+  const compact = framing(46, 58, 1.33);
+
+  check('the old framing really did clip the board', before.horizontalSlack < 0,
+    `${before.horizontalSlack.toFixed(2)} cells`);
+  check('the new desktop framing does not', desktop.horizontalSlack >= FOLLOW_DRIFT,
+    `${desktop.horizontalSlack.toFixed(2)} cells`);
+  check('nor the compact one', compact.horizontalSlack >= FOLLOW_DRIFT,
+    `${compact.horizontalSlack.toFixed(2)} cells`);
+
+  check('desktop perspective is stronger than before',
+    desktop.perspective > before.perspective,
+    `${desktop.perspective.toFixed(2)}x vs ${before.perspective.toFixed(2)}x`);
+  check('compact perspective is stronger than before',
+    compact.perspective > before.perspective,
+    `${compact.perspective.toFixed(2)}x vs ${before.perspective.toFixed(2)}x`);
+  check('desktop gets the deeper of the two',
+    desktop.perspective > compact.perspective,
+    `${desktop.perspective.toFixed(2)}x vs ${compact.perspective.toFixed(2)}x`);
+}
+
+section('3D: the noodle undulates vertically');
+{
+  const code = codeOf('js/render/renderer3d.js');
+
+  check('segments lift off the floor', /const lift = reduced \? 0/.test(code));
+  check('lift is one-sided, so nothing sinks through the floor',
+    /Math\.sin\(phase\) \* 0\.5 \+ 0\.5/.test(code));
+  check('each segment rests at its own radius',
+    /const y = radius \+ lift;/.test(code));
+  check('sway is perpendicular to travel, not fixed to one axis',
+    /sideX = -dz \/ length/.test(code) && /sideZ = dx \/ length/.test(code));
+  check('the old always-along-z wobble is gone', !/z \+ wobble \* 0\.15/.test(code));
+  check('reduced motion flattens it', /const lift = reduced \? 0/.test(code) &&
+    /const sway = reduced \? 0/.test(code));
+
+  // The lift range must keep the body above the tile tops (y = 0)
+  const RADIUS_NECK = 0.84 / 2;
+  const RADIUS_TAIL = (0.84 - 0.42) / 2;
+  for (const [label, radius] of [['neck', RADIUS_NECK], ['tail', RADIUS_TAIL]]) {
+    const lowest = radius + 0;          // lift bottoms out at 0
+    check(`${label} never sinks below the floor`, lowest - radius >= 0,
+      `bottom at ${(lowest - radius).toFixed(2)}`);
+  }
+  const highest = RADIUS_NECK + 0.3 * 1.0;
+  check('the body stays below the food at full lift', highest < 0.72 + 0.12,
+    `${highest.toFixed(2)} vs food at ~0.72`);
+}
+
+section('3D: the floor is instanced geometry');
+{
+  const code = codeOf('js/render/renderer3d.js');
+
+  check('the painted checker texture is gone', !/buildBoardTexture/.test(code));
+  check('no CanvasTexture is created for the floor', !/CanvasTexture/.test(code));
+  check('the floor is built from InstancedMesh',
+    /new THREE\.InstancedMesh\(geo\.slab/.test(code));
+  check('there are two, one per checker parity',
+    /tilesLight = new THREE\.InstancedMesh/.test(code) &&
+    /tilesDark = new THREE\.InstancedMesh/.test(code));
+  check('instance matrices are uploaded once',
+    /instanceMatrix\.needsUpdate = true/.test(code));
+  check('tiles receive shadows but do not cast them',
+    /tiles\.castShadow = false/.test(code) && /tiles\.receiveShadow = shadows/.test(code));
+  check('dark tiles are physically recessed', /TILE_RECESS/.test(code));
+  check('tiles are built once, not per frame',
+    !/new THREE\.InstancedMesh/.test(code.slice(code.indexOf('function layoutSnake'))));
+  check('a theme change is a material swap, not a rebuild',
+    /tilesLight\.material = toon\(theme\.board1\)/.test(code));
+  check('tiles are disposed', /tilesLight\.dispose\(\)/.test(code) &&
+    /tilesDark\.dispose\(\)/.test(code));
+
+  // Build the real scene and count what actually got created
+  const app = boot({ webgl: true, withThree: true, store: new Map() });
+  const THREE = app.THREE;
+  check('three.js exposes InstancedMesh', typeof THREE.InstancedMesh === 'function');
+  check('the 3D renderer initialised', app.game().renderer.id === '3d', app.game().renderer.id);
+
+  app.click('btn-play');
+  app.frame(16);
+  check('a frame renders with the new floor', (app.counts.glRenders || 0) > 0);
+
+  // 400 tiles must come from exactly two instanced meshes
+  const instancedCount = (app.counts['THREE.InstancedMesh'] || 0);
+  check('the scene survives 200 frames with the new geometry', (() => {
+    let error = null;
+    try { for (let i = 0; i < 200; i += 1) app.frame(16); } catch (e) { error = e; }
+    return !error;
+  })());
+
+  // Theme swaps must not rebuild geometry
+  for (const id of ['spicy', 'dessert', 'alien', 'noodle']) {
+    app.pick('themes', id);
+    app.frame(16);
+  }
+  check('four theme swaps do not break the floor', app.state() !== undefined);
+  check('and the game still runs', app.game().renderer.id === '3d');
+}
+
+section('3D: compact framing on small screens');
+{
+  // The renderer must accept the flag and still build a working scene
+  const compactApp = boot({ webgl: true, withThree: true, store: new Map() });
+  check('3D builds with the compact hint available', compactApp.game().renderer.id === '3d');
+  compactApp.click('btn-play');
+  compactApp.frame(16);
+  check('and renders', (compactApp.counts.glRenders || 0) > 0);
+
+  const mainCode = codeOf('js/main.js');
+  check('main.js decides compact from the viewport', /innerWidth <= 900/.test(mainCode));
+  check('compact is separate from low power',
+    /const compact = window\.innerWidth <= 900;/.test(mainCode) &&
+    /pointer: coarse/.test(mainCode));
+}
+
+
+
+section('mobile: the landscape nudge');
+{
+  const html = fs.readFileSync(path.join(PROJECT, 'play.html'), 'utf8');
+  const cssText = fs.readFileSync(path.join(PROJECT, 'style.css'), 'utf8');
+  const code = codeOf('js/orientation.js');
+
+  check('the hint exists in the markup', /id="rotate-hint"/.test(html));
+  check('it starts hidden', /class="rotate-hint" id="rotate-hint" hidden/.test(html));
+  check('it offers a one-tap way to get there', /id="btn-fullscreen"/.test(html));
+  check('it can be dismissed', /id="btn-rotate-dismiss"/.test(html));
+  check('the dismiss button has an accessible name',
+    /id="btn-rotate-dismiss" aria-label="[^"]+"/.test(html));
+
+  check('it only shows on a phone-sized portrait touch screen',
+    /@media \(max-width: 900px\) and \(orientation: portrait\) and \(pointer: coarse\)/.test(cssText));
+  check('it is never shown in landscape',
+    /@media \(orientation: landscape\)[^@]*\.rotate-hint \{ display: none !important; \}/.test(cssText));
+  check('the stage makes room for it rather than overlapping',
+    /"rotate"\s*"hud"\s*"board"/.test(cssText));
+  check('its animation respects reduced motion',
+    /prefers-reduced-motion[^@]*\.rotate-hint__icon \{ animation: none; \}/.test(cssText));
+  check('its button is a real touch target', /\.rotate-hint__go \{[^}]*min-height: 40px/.test(cssText));
+
+  // Behaviour: both browser calls are best-effort and must not throw
+  check('fullscreen is requested defensively', /requestFullscreen \|\|/.test(code));
+  check('the orientation lock is optional',
+    /typeof orientation\.lock === 'function'/.test(code));
+  check('a refused fullscreen is caught', /await request\.call\(root\);/.test(code) &&
+    /catch \(error\)/.test(code));
+  check('a refused lock is caught too',
+    (code.match(/catch \(error\)/g) || []).length >= 2);
+  check('the dismissal is remembered', /noodle\.rotateHint\.v1/.test(code));
+  check('it never touches the engine or a renderer',
+    !/createEngine|renderer|THREE/.test(code));
+
+  // It must boot without a matchMedia that reports portrait
+  const app = boot({ store: new Map() });
+  check('the game boots with the nudge present', app.state() === 'READY', app.state());
+  check('the hint stays hidden when the media query does not match',
+    app.registry.get('rotate-hint').hidden === true);
+  check('dismissing persists', (() => {
+    const nudge = app.ns.createOrientationNudge();
+    nudge.dismiss();
+    return app.store.get('noodle.rotateHint.v1') === 'true';
+  })());
+}
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 if (failures) console.log(failedNames.map((f) => `  - ${f}`).join('\n'));
